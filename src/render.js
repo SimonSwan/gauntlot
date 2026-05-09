@@ -44,14 +44,13 @@ const TREASURE_IMG = {
   chest:  "treasureChest",
 };
 
-// Cabinet positions.
-//   slotPositions[slot] = { col: "left"|"right", half: "top"|"bottom" }
-const SLOT_POS = {
-  0: { col: "left",  half: "top"    }, // Warrior
-  1: { col: "right", half: "top"    }, // Valkyrie
-  2: { col: "left",  half: "bottom" }, // Wizard
-  3: { col: "right", half: "bottom" }, // Elf
-};
+// In the reference cabinet screenshot the four heroes stack top-to-bottom in
+// the single right HUD column, in canonical Atari order:
+//   slot 0 Warrior  → row 0
+//   slot 1 Valkyrie → row 1
+//   slot 2 Wizard   → row 2
+//   slot 3 Elf      → row 3
+const SLOT_ROW = { 0: 0, 1: 1, 2: 2, 3: 3 };
 
 const ARCADE_BG = "#000";
 const HUD_BG = "#000";
@@ -68,30 +67,31 @@ export class Render {
   _computeLayout() {
     const W = this.canvas.width, H = this.canvas.height;
 
-    // Arcade cabinet layout: a centred game viewport flanked by two HUD
-    // columns of equal width. The viewport shows ~12 tiles wide × 14 tiles
-    // tall at the largest fractional scale that fits the available space.
-    const NATIVE_W = 12 * TILE;
-    const NATIVE_H = 14 * TILE;
-    const topBand = Math.min(56, Math.max(36, Math.floor(H * 0.06)));
-    const footBand = Math.max(20, Math.floor(H * 0.025));
-    const availH = H - topBand - footBand;
-    const sideW = Math.max(200, Math.floor(W * 0.22));
-    const availW = W - sideW * 2;
+    // Cabinet layout from the reference screenshot:
+    //   [   GAME VIEWPORT (large)   ] [ RIGHT HUD COLUMN ]
+    // Game on the left, single HUD column down the right. The HUD stacks
+    // GAUNTLET logo, LEVEL N, four hero panels, ©1985 ATARI GAMES.
+    //
+    // Game viewport renders a native 16×16 tile playfield (taken from
+    // VIEWPORT in javascript-gauntlet, scaled down a touch to fit a 16:10
+    // monitor) and is fractionally scaled up to the largest size that fits
+    // the available area while preserving aspect.
+    const NATIVE_W = 16 * TILE;
+    const NATIVE_H = 16 * TILE;
+    const hudW = Math.max(220, Math.floor(W * 0.22));
+    const availW = W - hudW;
+    const availH = H;
 
-    // Largest scale that keeps NATIVE_W × NATIVE_H within the available area.
     const scale = Math.min(availW / NATIVE_W, availH / NATIVE_H);
     const gameW = Math.floor(NATIVE_W * scale);
     const gameH = Math.floor(NATIVE_H * scale);
-    const gameX = sideW + Math.floor((availW - gameW) / 2);
-    const gameY = topBand + Math.floor((availH - gameH) / 2);
+    const gameX = Math.floor((availW - gameW) / 2);
+    const gameY = Math.floor((availH - gameH) / 2);
 
     return {
       W, H, scale,
-      topBand,
-      left:  { x: 0,        y: 0, w: sideW,            h: H },
-      right: { x: W - sideW, y: 0, w: sideW,           h: H },
-      game:  { x: gameX,    y: gameY, w: gameW, h: gameH },
+      hud:  { x: W - hudW, y: 0, w: hudW, h: H },
+      game: { x: gameX,    y: gameY, w: gameW, h: gameH },
       worldW: NATIVE_W,
       worldH: NATIVE_H,
     };
@@ -363,132 +363,147 @@ export class Render {
     ctx.imageSmoothingEnabled = false;
     const L = this.layout;
 
-    // Side columns + top band are the only HUD areas we paint over; the
-    // game viewport already drew its own pixels and must not be clobbered.
+    // Repaint only the HUD column and the letterbox bands around the game
+    // viewport. The playfield was already rendered by drawWorld; don't
+    // clobber it.
     ctx.fillStyle = HUD_BG;
-    ctx.fillRect(L.left.x, 0, L.left.w, L.H);
-    ctx.fillRect(L.right.x, 0, L.right.w, L.H);
-    ctx.fillRect(L.game.x, 0, L.game.w, L.topBand);
-    ctx.fillRect(L.game.x, L.game.y + L.game.h, L.game.w, L.H - (L.game.y + L.game.h));
+    ctx.fillRect(L.hud.x, 0, L.hud.w, L.H);
+    if (L.game.y > 0)
+      ctx.fillRect(0, 0, L.hud.x, L.game.y);
+    if (L.game.y + L.game.h < L.H)
+      ctx.fillRect(0, L.game.y + L.game.h, L.hud.x, L.H - (L.game.y + L.game.h));
+    if (L.game.x > 0)
+      ctx.fillRect(0, 0, L.game.x, L.H);
 
-    this._drawTopBand(ctx, L, levelName);
-
-    // Each side column is split vertically into two halves for two players.
-    const cellH = Math.floor((L.H - L.topBand) / 2);
-    for (let slot = 0; slot < 4; slot++) {
-      const pos = SLOT_POS[slot];
-      const side = pos.col === "left" ? L.left : L.right;
-      const top = L.topBand + (pos.half === "top" ? 0 : cellH);
-      this._drawPlayerPanel(ctx, players[slot], slot, side.x, top, side.w, cellH, frame);
-    }
-
-    // Footer trim, exactly as the cabinet.
-    const footSize = Math.max(10, Math.floor(L.H * 0.014));
-    ctx.fillStyle = "#888";
-    ctx.font = `bold ${footSize}px ${FONT}`;
-    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.fillText("1 COIN = 700 HEALTH", L.left.x + 12, L.H - 8);
-    ctx.textAlign = "right";
-    ctx.fillText("©1985 ATARI GAMES", L.right.x + L.right.w - 12, L.H - 8);
+    this._drawHudColumn(ctx, L, players, levelName, frame);
   }
 
-  _drawTopBand(ctx, L, levelName) {
-    const h = L.topBand;
+  // The single right HUD column. Top-down:
+  //   GAUNTLET logo, LEVEL N, 4 hero panels (Warrior/Valkyrie/Wizard/Elf),
+  //   ©1985 ATARI GAMES footer.
+  _drawHudColumn(ctx, L, players, levelName, frame) {
+    const x = L.hud.x, w = L.hud.w;
+    const padX = Math.max(8, Math.floor(w * 0.06));
 
-    // GAUNTLET logo: pinned to the top-right corner of the right column.
+    // Block heights — chosen so the four hero panels fill the bulk of the
+    // column with the logo / level / footer trim taking the rest.
+    const logoH  = Math.floor(L.H * 0.10);
+    const levelH = Math.floor(L.H * 0.12);
+    const footH  = Math.floor(L.H * 0.05);
+    const heroBlockH = L.H - logoH - levelH - footH;
+    const heroH = Math.floor(heroBlockH / 4);
+
+    let y = 0;
+
+    // GAUNTLET logo (top of column, centred).
+    this._drawGauntletLogo(ctx, x + padX, y + 4, w - padX * 2, logoH - 8);
+    y += logoH;
+
+    // LEVEL N — "LEVEL" label above a big number.
+    this._drawLevelBlock(ctx, x, y, w, levelH, levelName);
+    y += levelH;
+
+    // Four hero panels, top-to-bottom.
+    for (let slot = 0; slot < 4; slot++) {
+      this._drawHeroPanel(ctx, players[slot], slot, x, y + slot * heroH, w, heroH, frame);
+    }
+    y += heroH * 4;
+
+    // © 1985 ATARI GAMES footer.
+    const fontSize = Math.max(10, Math.floor(footH * 0.45));
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${fontSize}px ${FONT}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("© 1985", x + w/2, y + footH * 0.30);
+    ctx.fillText("ATARI GAMES", x + w/2, y + footH * 0.70);
+  }
+
+  _drawGauntletLogo(ctx, x, y, w, h) {
     const img = this.assets.images.textGauntlet;
     if (img && img.naturalWidth) {
-      const scale = Math.max(1, Math.floor((h - 8) / img.height));
-      const dw = img.width * scale, dh = img.height * scale;
-      ctx.drawImage(img, L.right.x + L.right.w - dw - 8, (h - dh) / 2, dw, dh);
+      const scale = Math.min(w / img.width, h / img.height);
+      const dw = Math.floor(img.width * scale), dh = Math.floor(img.height * scale);
+      const dx = x + Math.floor((w - dw) / 2), dy = y + Math.floor((h - dh) / 2);
+      // Drop-shadow tinted red to mimic the cabinet decal.
+      ctx.fillStyle = "rgba(180,30,30,0.55)";
+      ctx.drawImage(img, dx + 2, dy + 2, dw, dh);
+      ctx.drawImage(img, dx, dy, dw, dh);
     } else {
-      ctx.fillStyle = "#fff"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-      ctx.font = `bold ${Math.floor(h * 0.6)}px ${FONT}`;
-      ctx.fillText("GAUNTLET", L.right.x + L.right.w - 12, h/2);
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.floor(h * 0.85)}px ${FONT}`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("GAUNTLET", x + w/2, y + h/2);
     }
-
-    // LEVEL N centred horizontally over the game viewport.
-    const num = (levelName || "").match(/\d+/)?.[0] || "1";
-    const labelSize = Math.floor(h * 0.40);
-    const numSize = Math.floor(h * 0.62);
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-    ctx.font = `bold ${labelSize}px ${FONT}`;
-    ctx.fillText("LEVEL", L.game.x + L.game.w/2 - numSize - 4, h * 0.7);
-    ctx.fillStyle = "#fff";
-    ctx.font = `bold ${numSize}px ${FONT}`;
-    ctx.fillText(num, L.game.x + L.game.w/2 + numSize/2, h * 0.78);
   }
 
-  _drawPlayerPanel(ctx, p, slot, x, y, w, h, frame) {
+  _drawLevelBlock(ctx, x, y, w, h, levelName) {
+    const num = (levelName || "").match(/\d+/)?.[0] || "1";
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const labelSize = Math.max(12, Math.floor(h * 0.28));
+    const numSize = Math.max(28, Math.floor(h * 0.62));
+    ctx.font = `bold ${labelSize}px ${FONT}`;
+    ctx.fillText("LEVEL", x + w/2, y + h * 0.30);
+    ctx.font = `bold ${numSize}px ${FONT}`;
+    ctx.fillText(num, x + w/2, y + h * 0.72);
+  }
+
+  // One hero panel inside the right HUD column.
+  //   WARRIOR  (big colored name; Nx lives on the left if applicable)
+  //   SCORE  HEALTH       (small same-color labels, two columns)
+  //    3540   2634        (numeric values, two columns)
+  _drawHeroPanel(ctx, p, slot, x, y, w, h, frame) {
     const t = p.type;
-    const padX = Math.max(8, Math.floor(w * 0.04));
-    const padY = Math.max(8, Math.floor(h * 0.04));
-    const innerW = w - padX * 2;
+    const nameSize  = Math.max(16, Math.floor(h * 0.34));
+    const labelSize = Math.max(10, Math.floor(h * 0.16));
+    const valueSize = Math.max(14, Math.floor(h * 0.22));
+    const padX = Math.max(8, Math.floor(w * 0.08));
 
-    // Sizes scale with the panel — roughly track the arcade proportions.
-    const nameSize = Math.max(18, Math.floor(h * 0.16));
-    const labelSize = Math.max(10, Math.floor(h * 0.075));
-    const valueSize = Math.max(20, Math.floor(h * 0.18));
+    const nameY  = y + Math.floor(h * 0.05);
+    const labelY = y + Math.floor(h * 0.50);
+    const valueY = y + Math.floor(h * 0.74);
 
-    let cy = y + padY;
-
-    // Hero name in their arcade colour, large all-caps.
-    ctx.fillStyle = p.joined ? t.color : "#444";
+    // Hero name centred at the top of the panel in the cabinet colour.
+    ctx.fillStyle = p.joined ? t.color : "#3a3a3a";
     ctx.font = `bold ${nameSize}px ${FONT}`;
     ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(t.key.toUpperCase(), x + w/2, cy);
+    ctx.fillText(t.key.toUpperCase(), x + w/2, nameY);
+
+    // Lives "Nx" indicator (left of the name) when joined and at least one
+    // life — matches the "3x" / "2x" badges in the reference screenshot.
+    if (p.joined && (p.lives || 0) >= 1) {
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${nameSize}px ${FONT}`;
+      ctx.textAlign = "left";
+      ctx.fillText(`${p.lives}x`, x + padX, nameY);
+    }
+
+    // Two-column SCORE / HEALTH layout — labels in the hero colour, numeric
+    // values in white below them.
+    const colCx1 = x + Math.floor(w * 0.30);
+    const colCx2 = x + Math.floor(w * 0.70);
+
+    ctx.fillStyle = p.joined ? t.color : "#3a3a3a";
+    ctx.font = `bold ${labelSize}px ${FONT}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("SCORE",  colCx1, labelY);
+    ctx.fillText("HEALTH", colCx2, labelY);
 
     if (p.joined) {
-      // Lives "Nx" indicator under the name (when ≥ 2 — otherwise the cabinet
-      // simply doesn't draw it).
-      if ((p.lives || 0) >= 1) {
-        ctx.fillStyle = "#fff";
-        ctx.font = `bold ${nameSize}px ${FONT}`;
-        ctx.textAlign = "left";
-        ctx.fillText(`${p.lives}x`, x + padX, cy);
-      }
-      cy += nameSize + Math.floor(h * 0.04);
-
-      // SCORE label + big numeric value.
-      ctx.fillStyle = t.color;
-      ctx.font = `bold ${labelSize}px ${FONT}`;
-      ctx.textAlign = "center";
-      ctx.fillText("SCORE", x + w/2, cy);
-      cy += labelSize + 4;
-      ctx.fillStyle = "#fff";
       ctx.font = `bold ${valueSize}px ${FONT}`;
-      ctx.fillText(this._fmtNum(p.score, 5), x + w/2, cy);
-      cy += valueSize + Math.floor(h * 0.05);
-
-      // HEALTH label + numeric value (red flash when low — arcade does this).
-      ctx.fillStyle = t.color;
-      ctx.font = `bold ${labelSize}px ${FONT}`;
-      ctx.fillText("HEALTH", x + w/2, cy);
-      cy += labelSize + 4;
+      ctx.fillStyle = "#fff";
+      ctx.fillText(this._fmtNum(p.score, 4), colCx1, valueY);
       const weak = p.health < 200;
       const blink = weak && (Math.floor(frame / 12) % 2 === 0);
       ctx.fillStyle = weak ? (blink ? "#F90503" : "#fff") : "#fff";
-      ctx.font = `bold ${valueSize}px ${FONT}`;
-      ctx.fillText(this._fmtNum(Math.max(0, p.health), 5), x + w/2, cy);
-      cy += valueSize + Math.floor(h * 0.04);
-
-      // Keys / potion counters: small line of icons-as-text.
-      ctx.fillStyle = "#aaa";
-      ctx.font = `bold ${labelSize}px ${FONT}`;
-      ctx.fillText(`KEY ${p.keys}    POT ${p.potions}`, x + w/2, cy);
+      ctx.fillText(this._fmtNum(Math.max(0, p.health), 4), colCx2, valueY);
     } else {
-      cy += nameSize + Math.floor(h * 0.04);
-      const blink = (Math.floor(frame / 24) % 2) === 0;
-      ctx.fillStyle = blink ? "#999" : "#444";
-      ctx.font = `bold ${Math.max(12, Math.floor(h * 0.10))}px ${FONT}`;
-      ctx.textAlign = "center";
-      ctx.fillText("PRESS START", x + w/2, cy);
-      cy += Math.max(12, Math.floor(h * 0.10)) + Math.floor(h * 0.06);
-      const bind = ["WASD+G", "IJKL+;", "ARROWS+.", "NUMPAD"][slot];
-      ctx.fillStyle = "#666";
-      ctx.font = `${labelSize}px ${FONT}`;
-      ctx.fillText(bind, x + w/2, cy);
+      // Inactive panels in the cabinet show the labels only — slot looks
+      // dim until the player joins.
+      ctx.fillStyle = "#444";
+      ctx.font = `bold ${valueSize}px ${FONT}`;
+      ctx.fillText("----", colCx1, valueY);
+      ctx.fillText("----", colCx2, valueY);
     }
   }
 
