@@ -85,18 +85,12 @@ const SOUND_LIST = {
   music_warbringer:      "assets/sounds/music.warbringer.mp3",
 };
 
-// Hand-crafted Gauntlet levels from jakesgordon/javascript-gauntlet — 7 trainers
-// + 10 dungeons. Each PNG is a tile-per-pixel map in the encoding documented in
-// the README. The auto-converted ROM dumps in levels-rom/ are noise; these are
-// the actual playable maps.
+// Hand-crafted Gauntlet dungeons from jakesgordon/javascript-gauntlet. The 7
+// "trainerN" PNGs in the same dir are tutorial rooms (open-the-door, find-the-
+// key) where the starting room is walled off from the monster horde — fine
+// for tutorials, terrible as a first impression, so we skip them and lead with
+// the dungeons. The auto-converted ROM dumps in levels-rom/ are noise.
 const LEVEL_LIST = [
-  "assets/levels-jg/trainer1.png",
-  "assets/levels-jg/trainer2.png",
-  "assets/levels-jg/trainer3.png",
-  "assets/levels-jg/trainer4.png",
-  "assets/levels-jg/trainer5.png",
-  "assets/levels-jg/trainer6.png",
-  "assets/levels-jg/trainer7.png",
   "assets/levels-jg/level1.png",
   "assets/levels-jg/level2.png",
   "assets/levels-jg/level3.png",

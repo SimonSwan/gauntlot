@@ -21,17 +21,10 @@ const FLOOR_CYCLE = [FLOOR.LIGHT_STONE, FLOOR.WOOD,      FLOOR.DARK_STONE,  FLOO
 const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
                      "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
 
-// 17 hand-crafted Gauntlet levels (7 trainers + 10 dungeons), reskinned as
-// derelict-vessel decks for the Nostromo theme.
+// 10 hand-crafted Gauntlet dungeons, reskinned as derelict-vessel decks for
+// the Nostromo theme.
 const LEVEL_SOURCES = [
-  { src: "trainer1", name: "Airlock 01", help: "Boarding the derelict. Watch your six." },
-  { src: "trainer2", name: "Airlock 02", help: "Use SHOOT to engage hostiles at range." },
-  { src: "trainer3", name: "Airlock 03", help: "Doors need an access card." },
-  { src: "trainer4", name: "Airlock 04", help: "Generators keep spawning. Destroy them." },
-  { src: "trainer5", name: "Airlock 05", help: "Pickups regenerate health and ammo." },
-  { src: "trainer6", name: "Airlock 06", help: "EMP charge clears a room. Use sparingly." },
-  { src: "trainer7", name: "Airlock 07", help: "Find the exit hatch to advance." },
-  { src: "level1",   name: "Deck 01 — Cargo Hold",     help: null },
+  { src: "level1",   name: "Deck 01 — Cargo Hold",     help: "Boarding the derelict. Watch your six." },
   { src: "level2",   name: "Deck 02 — Engineering",    help: null },
   { src: "level3",   name: "Deck 03 — Crew Quarters",  help: null },
   { src: "level4",   name: "Deck 04 — Reactor Core",   help: null },
