@@ -42,11 +42,16 @@ class BitmapFont {
   // assets is the live Assets bag; we look up `imageKey` on every draw so
   // that fonts constructed before assets.loadAll() resolves still pick up
   // the image once it's available.
-  constructor(assets, imageKey, glyphW, glyphH, charMap) {
+  //
+  // `advance` is the per-glyph horizontal step in source pixels. Defaults
+  // to glyphW (no compression), but the cabinet HUD uses 7 for an 8-wide
+  // glyph because the ROM tiles have a 1-px right padding column.
+  constructor(assets, imageKey, glyphW, glyphH, charMap, advance) {
     this.assets = assets;
     this.imageKey = imageKey;
     this.gw = glyphW;
     this.gh = glyphH;
+    this.advance = advance ?? glyphW;
     this.charMap = charMap;
     this.cols = 0;
     this._tinted = new Map();
@@ -94,8 +99,8 @@ class BitmapFont {
     return c;
   }
 
-  // Pixel width of `str` at given scale.
-  measure(str, scale = 1) { return str.length * this.gw * scale; }
+  // Width of `str` at given integer scale, using the configured advance.
+  measure(str, scale = 1) { return str.length * this.advance * scale; }
 
   // Renders `str` left-aligned at (x, y). Returns the right-edge x.
   draw(ctx, str, x, y, color = "#fff", scale = 1) {
@@ -105,11 +110,13 @@ class BitmapFont {
     let cx = x;
     for (const ch of upper) {
       const idx = this.charMap[ch];
-      if (idx === undefined) { cx += this.gw * scale; continue; }
+      if (idx === undefined) { cx += this.advance * scale; continue; }
       const sx = (idx % this.cols) * this.gw;
       const sy = Math.floor(idx / this.cols) * this.gh;
+      // Glyphs are drawn at their full source size (gw × gh) but advance is
+      // typically `gw - 1` so neighbours sit tight, matching the cabinet.
       ctx.drawImage(atlas, sx, sy, this.gw, this.gh, Math.floor(cx), Math.floor(y), this.gw * scale, this.gh * scale);
-      cx += this.gw * scale;
+      cx += this.advance * scale;
     }
     return cx;
   }
@@ -174,40 +181,49 @@ export class Render {
     this.layout = this._computeLayout();
     // ROM-extracted fonts. Asset images may still be loading; the font looks
     // up its image key on every draw so it picks them up automatically.
-    this.fontSmall = new BitmapFont(assets, "textAlphabet",      8,  8,  SMALL_GLYPH_INDEX);
-    this.fontLarge = new BitmapFont(assets, "textAlphabetLarge", 16, 16, LARGE_GLYPH_INDEX);
+    // Small font advances by 7 (not 8) — the ROM glyphs are 7 px wide with a
+    // 1 px right-padding column the cabinet doesn't waste.
+    this.fontSmall = new BitmapFont(assets, "textAlphabet",      8,  8,  SMALL_GLYPH_INDEX, 7);
+    this.fontLarge = new BitmapFont(assets, "textAlphabetLarge", 16, 16, LARGE_GLYPH_INDEX, 14);
   }
 
   _computeLayout() {
     const W = this.canvas.width, H = this.canvas.height;
 
-    // Cabinet layout from the reference screenshot:
-    //   [   GAME VIEWPORT (large)   ] [ RIGHT HUD COLUMN ]
-    // Game on the left, single HUD column down the right. The HUD stacks
-    // GAUNTLET logo, LEVEL N, four hero panels, ©1985 ATARI GAMES.
-    //
-    // Game viewport renders a native 16×16 tile playfield (taken from
-    // VIEWPORT in javascript-gauntlet, scaled down a touch to fit a 16:10
-    // monitor) and is fractionally scaled up to the largest size that fits
-    // the available area while preserving aspect.
-    const NATIVE_W = 16 * TILE;
-    const NATIVE_H = 16 * TILE;
-    const hudW = Math.max(220, Math.floor(W * 0.22));
+    // The cabinet HUD is 80 native pixels wide (set by the GAUNTLET sidebar
+    // logo) by 240 native pixels tall (full arcade screen). We render at an
+    // integer scale K so every pixel of the ROM-extracted art lands on a
+    // whole device pixel — same crispness as the original.
+    const NATIVE_HUD_W = 80;
+    const NATIVE_H     = 240;
+    const K = Math.max(1, Math.floor(H / NATIVE_H));
+    const hudW = NATIVE_HUD_W * K;
+
+    // Game viewport eats whatever's left. We still render the maze at TILE=32
+    // world pixels so collisions stay tile-accurate; the camera shows however
+    // many tiles fit in the available area.
     const availW = W - hudW;
     const availH = H;
-
-    const scale = Math.min(availW / NATIVE_W, availH / NATIVE_H);
-    const gameW = Math.floor(NATIVE_W * scale);
-    const gameH = Math.floor(NATIVE_H * scale);
+    const NATIVE_GAME_W = 16 * TILE; // pleasant default for window sizes
+    const NATIVE_GAME_H = 14 * TILE;
+    const gameScale = Math.min(availW / NATIVE_GAME_W, availH / NATIVE_GAME_H);
+    const gameW = Math.floor(NATIVE_GAME_W * gameScale);
+    const gameH = Math.floor(NATIVE_GAME_H * gameScale);
     const gameX = Math.floor((availW - gameW) / 2);
     const gameY = Math.floor((availH - gameH) / 2);
 
     return {
-      W, H, scale,
+      W, H,
+      K,
+      nativeHudW: NATIVE_HUD_W,
+      nativeH:    NATIVE_H,
       hud:  { x: W - hudW, y: 0, w: hudW, h: H },
       game: { x: gameX,    y: gameY, w: gameW, h: gameH },
-      worldW: NATIVE_W,
-      worldH: NATIVE_H,
+      // World viewport size used by the camera in level.js.
+      worldW: NATIVE_GAME_W,
+      worldH: NATIVE_GAME_H,
+      scale: gameScale, // separate from K — the playfield uses a non-integer
+                        // scale so it can fill the centre column.
     };
   }
 
@@ -492,60 +508,113 @@ export class Render {
     this._drawHudColumn(ctx, L, players, levelName, frame);
   }
 
-  // The single right HUD column. Top-down:
-  //   GAUNTLET logo, LEVEL N, 4 hero panels (Warrior/Valkyrie/Wizard/Elf),
-  //   ©1985 ATARI GAMES footer. ALL TEXT uses the ROM-extracted bitmap font.
+  // Single right HUD column laid out per the cabinet spec, in native arcade
+  // pixels scaled up by integer K. Native panel = 80×240. K = floor(H/240).
+  // Native Y positions (top-to-bottom):
+  //   2..26    GAUNTLET logo (80×24)
+  //   32..40   "LEVEL" small label
+  //   44..60   big level digit (16×16)
+  //   66..162  four 24-tall hero blocks (Warrior/Valkyrie/Wizard/Elf)
+  //   220..228 "©1985"
+  //   228..236 "ATARI GAMES"
   _drawHudColumn(ctx, L, players, levelName, frame) {
-    const x = L.hud.x, w = L.hud.w;
-    const padX = Math.max(8, Math.floor(w * 0.06));
+    const K = L.K;
+    const px = L.hud.x; // panel x in screen pixels
+    const py = 0;
+    const nW = L.nativeHudW; // 80
 
-    // Reserve space for logo, level block, four hero panels, and footer.
-    const logoH  = Math.floor(L.H * 0.13);
-    const levelH = Math.floor(L.H * 0.12);
-    const footH  = Math.floor(L.H * 0.05);
-    const heroBlockH = L.H - logoH - levelH - footH;
-    const heroH = Math.floor(heroBlockH / 4);
+    // Helper to convert a native (x, y) inside the panel to screen px.
+    const sx = (nx) => px + nx * K;
+    const sy = (ny) => py + ny * K;
 
-    let y = 0;
+    // GAUNTLET sidebar logo (the ROM-extracted decal). Native 80×24 at y=2.
+    this._drawSidebarLogo(ctx, sx(0), sy(2), nW * K, 24 * K);
 
-    this._drawGauntletLogo(ctx, x + padX, y + 4, w - padX * 2, logoH - 8);
-    y += logoH;
+    // "LEVEL" label and big number.
+    this.fontSmall.drawCentered(ctx, "LEVEL", sx(nW / 2), sy(32), "#fff", K);
+    const num = (levelName || "").match(/\d+/)?.[0] || "1";
+    this.fontLarge.draw(
+      ctx, num,
+      sx(nW / 2) - this.fontLarge.measure(num, K) / 2,
+      sy(44),
+      "#fff", K,
+    );
 
-    this._drawLevelBlock(ctx, x, y, w, levelH, levelName);
-    y += levelH;
-
+    // Four hero blocks. Each block is 24 native px tall; we add a 6 px gap
+    // between blocks so the name of the next hero doesn't crash into the
+    // value row of the previous one.
+    const blockH = 24, blockGap = 6;
     for (let slot = 0; slot < 4; slot++) {
-      this._drawHeroPanel(ctx, players[slot], slot, x, y + slot * heroH, w, heroH, frame);
+      const blockY = 66 + slot * (blockH + blockGap);
+      this._drawHeroBlock(ctx, players[slot], px, blockY, nW, K, frame);
     }
-    y += heroH * 4;
 
-    // 1985 / ATARI GAMES footer using the ROM font.
-    const footScale = Math.max(1, Math.floor(footH / 22));
-    const lineSpacing = 8 * footScale + 2;
-    const footY = L.H - footH + Math.max(2, Math.floor(footH * 0.10));
-    this.fontSmall.drawCentered(ctx, "1985",         x + w/2, footY, "#fff", footScale);
-    this.fontSmall.drawCentered(ctx, "ATARI GAMES",  x + w/2, footY + lineSpacing, "#fff", footScale);
+    // Footer at the bottom of the panel. Native y = (240 - 16) = 224 / 232.
+    this.fontSmall.drawCentered(ctx, "1985",        sx(nW / 2), sy(220), "#fff", K);
+    this.fontSmall.drawCentered(ctx, "ATARI GAMES", sx(nW / 2), sy(228), "#fff", K);
   }
 
-  // Big ornate sidebar logo from the cabinet decal — copied straight from the
-  // ROM-extracted text-an-gauntlet-sidebar.png (80×24). We also overlay a red
-  // drop-shadow copy first to mimic the cabinet's painted highlight.
-  _drawGauntletLogo(ctx, x, y, w, h) {
-    const img = this.assets.images.textGauntletSide || this.assets.images.textGauntlet;
-    if (img && img.naturalWidth) {
-      const scale = Math.max(1, Math.floor(Math.min(w / img.width, h / img.height)));
-      const dw = img.width * scale, dh = img.height * scale;
-      const dx = x + Math.floor((w - dw) / 2), dy = y + Math.floor((h - dh) / 2);
-      // Red shadow underlay.
-      ctx.save();
-      ctx.globalAlpha = 0.7;
-      this._drawTinted(ctx, img, dx + scale, dy + scale, dw, dh, "#9a0a0a");
-      ctx.restore();
-      ctx.drawImage(img, dx, dy, dw, dh);
+  // Draw a single 24-native-tall hero block at the given native Y.
+  // Layout inside the block:
+  //   y+0..8   hero name (8h, hero color, centred)
+  //   y+10..16 SCORE / HEALTH labels (6h, hero color, two-column)
+  //   y+18..24 4-digit values (6h, white)
+  _drawHeroBlock(ctx, p, panelX, nativeY, nativeW, K, frame) {
+    const t = p.type;
+    const sx = (nx) => panelX + nx * K;
+    const sy = (ny) => 0    + (nativeY + ny) * K;
+
+    const colorBright = t.color;
+    const colorDim    = dimColor(t.color, 0.45);
+    const nameColor   = p.joined ? colorBright : colorDim;
+
+    // Hero name centred. "WARRIOR" = 7×7 = 49 native px in the 80-wide panel.
+    this.fontSmall.drawCentered(ctx, t.key.toUpperCase(), sx(nativeW / 2), sy(0), nameColor, K);
+
+    // Two-column layout for SCORE+value and HEALTH+value.
+    // Native column 1: SCORE (5×7 = 35 px) starts at native x = 0
+    // Native column 2: HEALTH (6×7 = 42 px) starts at native x = 38
+    // 4-digit values (4×7 = 28 px) centred under each label.
+    const col1Left = 0;             // SCORE column
+    const col1W    = 35;
+    const col2Left = 38;            // HEALTH column
+    const col2W    = 42;
+
+    this.fontSmall.draw(ctx, "SCORE",  sx(col1Left), sy(10), nameColor, K);
+    this.fontSmall.draw(ctx, "HEALTH", sx(col2Left), sy(10), nameColor, K);
+
+    if (p.joined) {
+      // Centre the value under its label.
+      const score4 = this._fmtNum(p.score, 4);
+      const hp4    = this._fmtNum(Math.max(0, p.health), 4);
+      const score4W = this.fontSmall.measure(score4, 1); // native px
+      const hp4W    = this.fontSmall.measure(hp4, 1);
+      this.fontSmall.draw(ctx, score4, sx(col1Left + (col1W - score4W) / 2), sy(18), "#fff", K);
+
+      const weak = p.health < 200;
+      const blink = weak && (Math.floor(frame / 12) % 2 === 0);
+      const hpColor = weak ? (blink ? "#F90503" : "#fff") : "#fff";
+      this.fontSmall.draw(ctx, hp4, sx(col2Left + (col2W - hp4W) / 2), sy(18), hpColor, K);
+    } else {
+      // Inactive: hero-coloured "----" placeholders.
+      const dashes4 = "----";
+      const dashW = this.fontSmall.measure(dashes4, 1);
+      this.fontSmall.draw(ctx, dashes4, sx(col1Left + (col1W - dashW) / 2), sy(18), colorDim, K);
+      this.fontSmall.draw(ctx, dashes4, sx(col2Left + (col2W - dashW) / 2), sy(18), colorDim, K);
     }
+  }
+
+  _drawSidebarLogo(ctx, x, y, w, h) {
+    const img = this.assets.images.textGauntletSide || this.assets.images.textGauntlet;
+    if (!img || !img.naturalWidth) return;
+    // Red drop-shadow underlay then the white logo on top.
+    this._drawTinted(ctx, img, x + 2, y + 2, w, h, "#9a0a0a");
+    ctx.drawImage(img, x, y, w, h);
   }
 
   // Helper: draws `img` tinted to `color`, scaled to (dw, dh) at (dx, dy).
+  // Uses a reusable temp canvas so we don't trash the per-color tint cache
+  // BitmapFont keeps for itself.
   _drawTinted(ctx, img, dx, dy, dw, dh, color) {
     if (!this._tintTmp) {
       this._tintTmp = document.createElement("canvas");
@@ -561,84 +630,6 @@ export class Render {
     g.fillStyle = color;
     g.fillRect(0, 0, tmp.width, tmp.height);
     ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, dx, dy, dw, dh);
-  }
-
-  // LEVEL N block — small "LEVEL" label above a giant ROM digit.
-  _drawLevelBlock(ctx, x, y, w, h, levelName) {
-    const num = (levelName || "").match(/\d+/)?.[0] || "1";
-
-    // "LEVEL" in the small ROM font.
-    const labelScale = Math.max(2, Math.floor(h / 24));
-    this.fontSmall.drawCentered(ctx, "LEVEL", x + w/2, y + Math.floor(h * 0.10), "#fff", labelScale);
-
-    // Big number using the dedicated 16×16 large digit ROM atlas.
-    const digitH = Math.floor(h * 0.55);
-    const digitScale = Math.max(1, Math.floor(digitH / 16));
-    const totalW = num.length * 16 * digitScale;
-    this.fontLarge.draw(ctx, num, x + w/2 - totalW/2, y + Math.floor(h * 0.35), "#fff", digitScale);
-  }
-
-  // One hero panel inside the right HUD column. ROM-font everywhere, sized
-  // to track the cabinet's own proportions: a chunky 2x hero name, then a
-  // small SCORE / HEALTH label row, then a slightly larger numeric value row.
-  // Inactive panels keep the hero colour but at half alpha (so the column
-  // still reads "WARRIOR / VALKYRIE / WIZARD / ELF" before anyone joins),
-  // matching the cabinet's idle attract loop.
-  _drawHeroPanel(ctx, p, slot, x, y, w, h, frame) {
-    const t = p.type;
-    // Fixed integer scales — h-driven scaling was producing labelScale=2,
-    // which collided "SCORE" + "HEALTH" into "SCORBEALTH" in narrow columns.
-    const nameScale  = 2;
-    const labelScale = 1;
-    const valueScale = 2;
-
-    const nameY  = y + Math.floor(h * 0.06);
-    const labelY = y + Math.floor(h * 0.40);
-    const valueY = y + Math.floor(h * 0.62);
-    const padX = Math.max(6, Math.floor(w * 0.04));
-
-    // Hero colour, dimmed for unjoined slots (still readable, still in palette).
-    const colorBright = t.color;
-    const colorDim    = dimColor(t.color, 0.45);
-    const nameColor = p.joined ? colorBright : colorDim;
-
-    // Hero name centred at the top of the panel.
-    this.fontSmall.drawCentered(ctx, t.key.toUpperCase(), x + w/2, nameY, nameColor, nameScale);
-
-    // Nx lives badge top-left (only when joined and ≥1 life shown).
-    if (p.joined && (p.lives || 0) >= 1) {
-      this.fontSmall.draw(ctx, `${p.lives}X`, x + padX, nameY, "#fff", nameScale);
-    }
-
-    // SCORE / HEALTH labels in two columns. Calculate cx positions from the
-    // ACTUAL label widths to guarantee no overlap regardless of column size.
-    const scoreW  = this.fontSmall.measure("SCORE", labelScale);
-    const healthW = this.fontSmall.measure("HEALTH", labelScale);
-    const valW    = this.fontSmall.measure("0000", valueScale);
-    // Align on a single grid: SCORE / value go in the left column, HEALTH /
-    // value in the right. Use the larger of (labelW, valueW) for spacing.
-    const colW = Math.max(scoreW, healthW, valW);
-    const gap  = Math.max(8, Math.floor(w * 0.04));
-    const totalW = colW * 2 + gap;
-    const leftX  = x + Math.floor((w - totalW) / 2);
-    const cx1 = leftX + colW / 2;
-    const cx2 = leftX + colW + gap + colW / 2;
-
-    this.fontSmall.drawCentered(ctx, "SCORE",  cx1, labelY, nameColor, labelScale);
-    this.fontSmall.drawCentered(ctx, "HEALTH", cx2, labelY, nameColor, labelScale);
-
-    if (p.joined) {
-      this.fontSmall.drawCentered(ctx, this._fmtNum(p.score, 4), cx1, valueY, "#fff", valueScale);
-      const weak = p.health < 200;
-      const blink = weak && (Math.floor(frame / 12) % 2 === 0);
-      const hpColor = weak ? (blink ? "#F90503" : "#fff") : "#fff";
-      this.fontSmall.drawCentered(ctx, this._fmtNum(Math.max(0, p.health), 4), cx2, valueY, hpColor, valueScale);
-    } else {
-      // Inactive: small hero-coloured dashes as placeholders — same as the
-      // cabinet attract loop.
-      this.fontSmall.drawCentered(ctx, "----", cx1, valueY, colorDim, valueScale);
-      this.fontSmall.drawCentered(ctx, "----", cx2, valueY, colorDim, valueScale);
-    }
   }
 
   _fmtNum(n, digits) {
