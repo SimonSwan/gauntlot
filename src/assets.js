@@ -73,11 +73,21 @@ const IMAGE_LIST = {
   explosionLobber:"assets/sprites/monster-lobber-exlosion-sprite-sheet.png",
 
   // UI
-  textGauntlet:   "assets/sprites/text-gauntlet.png",
-  textPoints:     "assets/sprites/text-points.png",
-  iconKey:        "assets/sprites/icon-key.png",
-  iconPotion:     "assets/sprites/icon-potion.png",
-  iconUpgrades:   "assets/sprites/icon-upgrades.png",
+  textGauntlet:        "assets/sprites/text-gauntlet.png",
+  textPoints:          "assets/sprites/text-points.png",
+  iconKey:             "assets/sprites/icon-key.png",
+  iconPotion:          "assets/sprites/icon-potion.png",
+  iconUpgrades:        "assets/sprites/icon-upgrades.png",
+
+  // ROM-extracted bitmap fonts (alphanumeric ROM 136037-104.6p decoded by
+  // mbeisser1/gauntlet_mame_gfx).
+  //
+  //   textAlphabet       80×128 small 8×8 font: A-Z, 0-9, punctuation
+  //   textAlphabetLarge  16×176 large 16×16 digits 0-9 plus letter A
+  //   textGauntletSide   80×24  cabinet sidebar GAUNTLET logo
+  textAlphabet:        "assets/sprites/text-an-alphabet.png",
+  textAlphabetLarge:   "assets/sprites/text-an-alphabet-large-0-9A.png",
+  textGauntletSide:    "assets/sprites/text-an-gauntlet-sidebar.png",
 };
 
 const SOUND_LIST = {

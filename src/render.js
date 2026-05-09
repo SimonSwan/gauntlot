@@ -1,19 +1,129 @@
 // Arcade-faithful renderer.
-//
-// Canvas fills the window; we lay out three columns:
-//   [ left HUD column ] [ centre game viewport ] [ right HUD column ]
-//
-// Each HUD column shows two of the four player slots stacked vertically:
-//   left  = P1 Warrior (top) + P3 Wizard (bottom)
-//   right = P2 Valkyrie (top) + P4 Elf (bottom)
-// matching the original cabinet layout.
-//
-// The internal "world" tile size is a fixed 32px; the centre viewport just
-// shows however many tiles fit. We do *not* scale individual sprites — the
-// arcade look is one pixel = one pixel — but the total panel layout responds
-// to the window size.
-
 import { TILE, DIR, FPS } from "./constants.js";
+
+// ---------------------------------------------------------------------------
+// BitmapFont — renders strings from a ROM-extracted glyph sheet.
+//
+// `text-an-alphabet.png` (80×128) is the alphanumeric ROM (136037-104.6p)
+// decoded into an 8×8 glyph atlas. The character layout is custom (NOT
+// pure ASCII). Glyph index = row * 10 + col, where col is the 8-pixel
+// column and row is the 8-pixel row inside the sheet.
+//
+// `text-an-alphabet-large-0-9A.png` (16×176) is a separate 16×16 atlas
+// containing just 0-9 plus A.
+// ---------------------------------------------------------------------------
+
+const SMALL_GLYPH_INDEX = {
+  // row 0 (col 1-9): A B C D E F G H I  (col 0 = blank space)
+  " ":  0,
+  "A":  1, "B":  2, "C":  3, "D":  4, "E":  5,
+  "F":  6, "G":  7, "H":  8, "I":  9,
+  // row 1 (col 0-9): J K L M N O P Q R S
+  "J": 10, "K": 11, "L": 12, "M": 13, "N": 14,
+  "O": 15, "P": 16, "Q": 17, "R": 18, "S": 19,
+  // row 2 (col 0-6): T U V W X Y Z
+  "T": 20, "U": 21, "V": 22, "W": 23, "X": 24, "Y": 25, "Z": 26,
+  // row 3 (col 3-9): ! " # $ % & '
+  "!": 33, '"': 34, "#": 35, "$": 36, "%": 37, "&": 38, "'": 39,
+  // row 4: ( ) * + , - . /  0 1
+  "(": 40, ")": 41, "*": 42, "+": 43, ",": 44, "-": 45, ".": 46, "/": 47,
+  "0": 48, "1": 49,
+  // row 5 (col 0-7): 2 3 4 5 6 7 8 9     (col 8-9: : and ;)
+  "2": 50, "3": 51, "4": 52, "5": 53, "6": 54, "7": 55, "8": 56, "9": 57,
+  ":": 58, ";": 59,
+};
+
+const LARGE_GLYPH_INDEX = {
+  "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+  "6": 6, "7": 7, "8": 8, "9": 9, "A": 10,
+};
+
+class BitmapFont {
+  // assets is the live Assets bag; we look up `imageKey` on every draw so
+  // that fonts constructed before assets.loadAll() resolves still pick up
+  // the image once it's available.
+  constructor(assets, imageKey, glyphW, glyphH, charMap) {
+    this.assets = assets;
+    this.imageKey = imageKey;
+    this.gw = glyphW;
+    this.gh = glyphH;
+    this.charMap = charMap;
+    this.cols = 0;
+    this._tinted = new Map();
+  }
+
+  get image() { return this.assets.images[this.imageKey]; }
+
+  _ensureLoaded() {
+    const img = this.image;
+    if (!img || !img.naturalWidth) return false;
+    if (!this.cols) this.cols = Math.floor(img.naturalWidth / this.gw);
+    return true;
+  }
+
+  // Returns a per-color tinted copy of the glyph atlas, cached.
+  //
+  // The ROM-extracted alphabet PNG is RGB (no alpha) — black background
+  // with white glyph pixels. We can't just tint it with a composite op
+  // because every pixel is opaque. So for each color we build a fresh
+  // RGBA canvas: dark source pixels become alpha=0, bright pixels become
+  // the requested colour at full alpha.
+  _atlas(color) {
+    if (!this._ensureLoaded()) return null;
+    const cached = this._tinted.get(color);
+    if (cached) return cached;
+    const w = this.image.naturalWidth, h = this.image.naturalHeight;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(this.image, 0, 0);
+    const img = g.getImageData(0, 0, w, h);
+    const d = img.data;
+    const [tr, tg, tb] = parseColor(color);
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = (d[i] + d[i+1] + d[i+2]) / 3;
+      if (lum < 60) {
+        d[i+3] = 0; // fully transparent background
+      } else {
+        d[i] = tr; d[i+1] = tg; d[i+2] = tb; d[i+3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    this._tinted.set(color, c);
+    return c;
+  }
+
+  // Pixel width of `str` at given scale.
+  measure(str, scale = 1) { return str.length * this.gw * scale; }
+
+  // Renders `str` left-aligned at (x, y). Returns the right-edge x.
+  draw(ctx, str, x, y, color = "#fff", scale = 1) {
+    const atlas = this._atlas(color);
+    if (!atlas) return x;
+    const upper = String(str).toUpperCase();
+    let cx = x;
+    for (const ch of upper) {
+      const idx = this.charMap[ch];
+      if (idx === undefined) { cx += this.gw * scale; continue; }
+      const sx = (idx % this.cols) * this.gw;
+      const sy = Math.floor(idx / this.cols) * this.gh;
+      ctx.drawImage(atlas, sx, sy, this.gw, this.gh, Math.floor(cx), Math.floor(y), this.gw * scale, this.gh * scale);
+      cx += this.gw * scale;
+    }
+    return cx;
+  }
+
+  drawCentered(ctx, str, cx, y, color = "#fff", scale = 1) {
+    const w = this.measure(String(str), scale);
+    return this.draw(ctx, str, cx - w/2, y, color, scale);
+  }
+
+  drawRight(ctx, str, rx, y, color = "#fff", scale = 1) {
+    const w = this.measure(String(str), scale);
+    return this.draw(ctx, str, rx - w, y, color, scale);
+  }
+}
 
 const SP = 24;
 
@@ -62,6 +172,10 @@ export class Render {
     this.ctx = canvas.getContext("2d");
     this.assets = assets;
     this.layout = this._computeLayout();
+    // ROM-extracted fonts. Asset images may still be loading; the font looks
+    // up its image key on every draw so it picks them up automatically.
+    this.fontSmall = new BitmapFont(assets, "textAlphabet",      8,  8,  SMALL_GLYPH_INDEX);
+    this.fontLarge = new BitmapFont(assets, "textAlphabetLarge", 16, 16, LARGE_GLYPH_INDEX);
   }
 
   _computeLayout() {
@@ -380,14 +494,13 @@ export class Render {
 
   // The single right HUD column. Top-down:
   //   GAUNTLET logo, LEVEL N, 4 hero panels (Warrior/Valkyrie/Wizard/Elf),
-  //   ©1985 ATARI GAMES footer.
+  //   ©1985 ATARI GAMES footer. ALL TEXT uses the ROM-extracted bitmap font.
   _drawHudColumn(ctx, L, players, levelName, frame) {
     const x = L.hud.x, w = L.hud.w;
     const padX = Math.max(8, Math.floor(w * 0.06));
 
-    // Block heights — chosen so the four hero panels fill the bulk of the
-    // column with the logo / level / footer trim taking the rest.
-    const logoH  = Math.floor(L.H * 0.10);
+    // Reserve space for logo, level block, four hero panels, and footer.
+    const logoH  = Math.floor(L.H * 0.13);
     const levelH = Math.floor(L.H * 0.12);
     const footH  = Math.floor(L.H * 0.05);
     const heroBlockH = L.H - logoH - levelH - footH;
@@ -395,121 +508,141 @@ export class Render {
 
     let y = 0;
 
-    // GAUNTLET logo (top of column, centred).
     this._drawGauntletLogo(ctx, x + padX, y + 4, w - padX * 2, logoH - 8);
     y += logoH;
 
-    // LEVEL N — "LEVEL" label above a big number.
     this._drawLevelBlock(ctx, x, y, w, levelH, levelName);
     y += levelH;
 
-    // Four hero panels, top-to-bottom.
     for (let slot = 0; slot < 4; slot++) {
       this._drawHeroPanel(ctx, players[slot], slot, x, y + slot * heroH, w, heroH, frame);
     }
     y += heroH * 4;
 
-    // © 1985 ATARI GAMES footer.
-    const fontSize = Math.max(10, Math.floor(footH * 0.45));
-    ctx.fillStyle = "#fff";
-    ctx.font = `bold ${fontSize}px ${FONT}`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("© 1985", x + w/2, y + footH * 0.30);
-    ctx.fillText("ATARI GAMES", x + w/2, y + footH * 0.70);
+    // 1985 / ATARI GAMES footer using the ROM font.
+    const footScale = Math.max(1, Math.floor(footH / 22));
+    const lineSpacing = 8 * footScale + 2;
+    const footY = L.H - footH + Math.max(2, Math.floor(footH * 0.10));
+    this.fontSmall.drawCentered(ctx, "1985",         x + w/2, footY, "#fff", footScale);
+    this.fontSmall.drawCentered(ctx, "ATARI GAMES",  x + w/2, footY + lineSpacing, "#fff", footScale);
   }
 
+  // Big ornate sidebar logo from the cabinet decal — copied straight from the
+  // ROM-extracted text-an-gauntlet-sidebar.png (80×24). We also overlay a red
+  // drop-shadow copy first to mimic the cabinet's painted highlight.
   _drawGauntletLogo(ctx, x, y, w, h) {
-    const img = this.assets.images.textGauntlet;
+    const img = this.assets.images.textGauntletSide || this.assets.images.textGauntlet;
     if (img && img.naturalWidth) {
-      const scale = Math.min(w / img.width, h / img.height);
-      const dw = Math.floor(img.width * scale), dh = Math.floor(img.height * scale);
+      const scale = Math.max(1, Math.floor(Math.min(w / img.width, h / img.height)));
+      const dw = img.width * scale, dh = img.height * scale;
       const dx = x + Math.floor((w - dw) / 2), dy = y + Math.floor((h - dh) / 2);
-      // Drop-shadow tinted red to mimic the cabinet decal.
-      ctx.fillStyle = "rgba(180,30,30,0.55)";
-      ctx.drawImage(img, dx + 2, dy + 2, dw, dh);
+      // Red shadow underlay.
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      this._drawTinted(ctx, img, dx + scale, dy + scale, dw, dh, "#9a0a0a");
+      ctx.restore();
       ctx.drawImage(img, dx, dy, dw, dh);
-    } else {
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.floor(h * 0.85)}px ${FONT}`;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("GAUNTLET", x + w/2, y + h/2);
     }
   }
 
+  // Helper: draws `img` tinted to `color`, scaled to (dw, dh) at (dx, dy).
+  _drawTinted(ctx, img, dx, dy, dw, dh, color) {
+    if (!this._tintTmp) {
+      this._tintTmp = document.createElement("canvas");
+    }
+    const tmp = this._tintTmp;
+    tmp.width = img.naturalWidth;
+    tmp.height = img.naturalHeight;
+    const g = tmp.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.clearRect(0, 0, tmp.width, tmp.height);
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = color;
+    g.fillRect(0, 0, tmp.width, tmp.height);
+    ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, dx, dy, dw, dh);
+  }
+
+  // LEVEL N block — small "LEVEL" label above a giant ROM digit.
   _drawLevelBlock(ctx, x, y, w, h, levelName) {
     const num = (levelName || "").match(/\d+/)?.[0] || "1";
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const labelSize = Math.max(12, Math.floor(h * 0.28));
-    const numSize = Math.max(28, Math.floor(h * 0.62));
-    ctx.font = `bold ${labelSize}px ${FONT}`;
-    ctx.fillText("LEVEL", x + w/2, y + h * 0.30);
-    ctx.font = `bold ${numSize}px ${FONT}`;
-    ctx.fillText(num, x + w/2, y + h * 0.72);
+
+    // "LEVEL" in the small ROM font.
+    const labelScale = Math.max(2, Math.floor(h / 24));
+    this.fontSmall.drawCentered(ctx, "LEVEL", x + w/2, y + Math.floor(h * 0.10), "#fff", labelScale);
+
+    // Big number using the dedicated 16×16 large digit ROM atlas.
+    const digitH = Math.floor(h * 0.55);
+    const digitScale = Math.max(1, Math.floor(digitH / 16));
+    const totalW = num.length * 16 * digitScale;
+    this.fontLarge.draw(ctx, num, x + w/2 - totalW/2, y + Math.floor(h * 0.35), "#fff", digitScale);
   }
 
-  // One hero panel inside the right HUD column.
-  //   WARRIOR  (big colored name; Nx lives on the left if applicable)
-  //   SCORE  HEALTH       (small same-color labels, two columns)
-  //    3540   2634        (numeric values, two columns)
+  // One hero panel inside the right HUD column. ROM-font everywhere.
+  //   WARRIOR              (big colored name; Nx on the left when ≥1)
+  //   SCORE  HEALTH        (small same-color labels)
+  //    3540   2634         (numeric values)
   _drawHeroPanel(ctx, p, slot, x, y, w, h, frame) {
     const t = p.type;
-    const nameSize  = Math.max(16, Math.floor(h * 0.34));
-    const labelSize = Math.max(10, Math.floor(h * 0.16));
-    const valueSize = Math.max(14, Math.floor(h * 0.22));
-    const padX = Math.max(8, Math.floor(w * 0.08));
+    const nameScale  = Math.max(2, Math.floor(h / 36));
+    const labelScale = Math.max(1, Math.floor(h / 56));
+    const valueScale = Math.max(1, Math.floor(h / 40));
+    const padX = Math.max(8, Math.floor(w * 0.06));
 
-    const nameY  = y + Math.floor(h * 0.05);
+    const nameY  = y + Math.floor(h * 0.08);
     const labelY = y + Math.floor(h * 0.50);
-    const valueY = y + Math.floor(h * 0.74);
+    const valueY = y + Math.floor(h * 0.72);
 
-    // Hero name centred at the top of the panel in the cabinet colour.
-    ctx.fillStyle = p.joined ? t.color : "#3a3a3a";
-    ctx.font = `bold ${nameSize}px ${FONT}`;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(t.key.toUpperCase(), x + w/2, nameY);
+    const nameColor = p.joined ? t.color : "#3a3a3a";
 
-    // Lives "Nx" indicator (left of the name) when joined and at least one
-    // life — matches the "3x" / "2x" badges in the reference screenshot.
+    // Hero name centred at the top of the panel.
+    this.fontSmall.drawCentered(ctx, t.key.toUpperCase(), x + w/2, nameY, nameColor, nameScale);
+
+    // Nx lives badge top-left.
     if (p.joined && (p.lives || 0) >= 1) {
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${nameSize}px ${FONT}`;
-      ctx.textAlign = "left";
-      ctx.fillText(`${p.lives}x`, x + padX, nameY);
+      this.fontSmall.draw(ctx, `${p.lives}X`, x + padX, nameY, "#fff", nameScale);
     }
 
-    // Two-column SCORE / HEALTH layout — labels in the hero colour, numeric
-    // values in white below them.
-    const colCx1 = x + Math.floor(w * 0.30);
-    const colCx2 = x + Math.floor(w * 0.70);
-
-    ctx.fillStyle = p.joined ? t.color : "#3a3a3a";
-    ctx.font = `bold ${labelSize}px ${FONT}`;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText("SCORE",  colCx1, labelY);
-    ctx.fillText("HEALTH", colCx2, labelY);
+    // SCORE / HEALTH labels in two columns.
+    const cx1 = x + Math.floor(w * 0.30);
+    const cx2 = x + Math.floor(w * 0.70);
+    this.fontSmall.drawCentered(ctx, "SCORE",  cx1, labelY, nameColor, labelScale);
+    this.fontSmall.drawCentered(ctx, "HEALTH", cx2, labelY, nameColor, labelScale);
 
     if (p.joined) {
-      ctx.font = `bold ${valueSize}px ${FONT}`;
-      ctx.fillStyle = "#fff";
-      ctx.fillText(this._fmtNum(p.score, 4), colCx1, valueY);
+      this.fontSmall.drawCentered(ctx, this._fmtNum(p.score, 4),               cx1, valueY, "#fff", valueScale);
       const weak = p.health < 200;
       const blink = weak && (Math.floor(frame / 12) % 2 === 0);
-      ctx.fillStyle = weak ? (blink ? "#F90503" : "#fff") : "#fff";
-      ctx.fillText(this._fmtNum(Math.max(0, p.health), 4), colCx2, valueY);
+      const hpColor = weak ? (blink ? "#F90503" : "#fff") : "#fff";
+      this.fontSmall.drawCentered(ctx, this._fmtNum(Math.max(0, p.health), 4), cx2, valueY, hpColor, valueScale);
     } else {
-      // Inactive panels in the cabinet show the labels only — slot looks
-      // dim until the player joins.
-      ctx.fillStyle = "#444";
-      ctx.font = `bold ${valueSize}px ${FONT}`;
-      ctx.fillText("----", colCx1, valueY);
-      ctx.fillText("----", colCx2, valueY);
+      this.fontSmall.drawCentered(ctx, "----", cx1, valueY, "#444", valueScale);
+      this.fontSmall.drawCentered(ctx, "----", cx2, valueY, "#444", valueScale);
     }
   }
 
   _fmtNum(n, digits) {
     return String(Math.floor(n)).padStart(digits, "0");
   }
+}
+
+// "#RGB", "#RRGGBB", or rgb()/named — return [r,g,b] 0-255.
+function parseColor(c) {
+  if (typeof c !== "string") return [255, 255, 255];
+  if (c[0] === "#") {
+    if (c.length === 4) {
+      return [parseInt(c[1] + c[1], 16), parseInt(c[2] + c[2], 16), parseInt(c[3] + c[3], 16)];
+    }
+    return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  }
+  // Use a temp element to resolve named colors via the browser.
+  const t = parseColor._tmp || (parseColor._tmp = document.createElement("div"));
+  t.style.color = c;
+  document.body.appendChild(t);
+  const cs = getComputedStyle(t).color;
+  document.body.removeChild(t);
+  const m = cs.match(/\d+/g);
+  return m ? [+m[0], +m[1], +m[2]] : [255, 255, 255];
 }
 
 function mapDirToRow(dir, rows) {
