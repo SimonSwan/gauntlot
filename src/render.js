@@ -43,18 +43,24 @@ class BitmapFont {
   // that fonts constructed before assets.loadAll() resolves still pick up
   // the image once it's available.
   //
-  // `advance` is the per-glyph horizontal step in source pixels. Defaults
-  // to glyphW (no compression), but the cabinet HUD uses 7 for an 8-wide
-  // glyph because the ROM tiles have a 1-px right padding column.
-  constructor(assets, imageKey, glyphW, glyphH, charMap, advance) {
+  // The ROM glyphs sit in fixed-size cells (8×8 or 16×16) but most letters
+  // don't fill the cell — `I` is 4 px wide, `M` and `W` are 7 px. We scan
+  // each glyph at load time, find its tightest pixel bbox, and remember a
+  // per-glyph (leftPad, visualWidth) so drawing advances by the glyph's
+  // actual width + 1 px gap. Same as a proportional bitmap font.
+  //
+  // `gap` is the inter-character pixel gap (in source pixels).
+  constructor(assets, imageKey, glyphW, glyphH, charMap, gap = 1) {
     this.assets = assets;
     this.imageKey = imageKey;
     this.gw = glyphW;
     this.gh = glyphH;
-    this.advance = advance ?? glyphW;
+    this.gap = gap;
     this.charMap = charMap;
     this.cols = 0;
     this._tinted = new Map();
+    this._metrics = null; // [{ leftPad, width }] per glyph index
+    this._spaceWidth = Math.max(2, Math.floor(glyphW / 2));
   }
 
   get image() { return this.assets.images[this.imageKey]; }
@@ -63,7 +69,43 @@ class BitmapFont {
     const img = this.image;
     if (!img || !img.naturalWidth) return false;
     if (!this.cols) this.cols = Math.floor(img.naturalWidth / this.gw);
+    if (!this._metrics) this._scanMetrics(img);
     return true;
+  }
+
+  // Read every glyph cell and record its pixel bbox in source pixels.
+  _scanMetrics(img) {
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, c.width, c.height).data;
+    const rows = Math.floor(img.naturalHeight / this.gh);
+    const total = this.cols * rows;
+    const metrics = new Array(total);
+    for (let i = 0; i < total; i++) {
+      const cx = (i % this.cols) * this.gw;
+      const cy = Math.floor(i / this.cols) * this.gh;
+      let minX = this.gw, maxX = -1;
+      for (let dy = 0; dy < this.gh; dy++) {
+        for (let dx = 0; dx < this.gw; dx++) {
+          const p = ((cy + dy) * c.width + (cx + dx)) << 2;
+          const lum = (data[p] + data[p+1] + data[p+2]) / 3;
+          if (lum > 60) {
+            if (dx < minX) minX = dx;
+            if (dx > maxX) maxX = dx;
+          }
+        }
+      }
+      if (maxX < 0) {
+        metrics[i] = { leftPad: 0, width: 0 };
+      } else {
+        metrics[i] = { leftPad: minX, width: maxX - minX + 1 };
+      }
+    }
+    this._metrics = metrics;
   }
 
   // Returns a per-color tinted copy of the glyph atlas, cached.
@@ -99,24 +141,53 @@ class BitmapFont {
     return c;
   }
 
-  // Width of `str` at given integer scale, using the configured advance.
-  measure(str, scale = 1) { return str.length * this.advance * scale; }
+  // Width of `str` at given integer scale (proportional — sums each glyph's
+  // own visual width + the inter-char gap).
+  measure(str, scale = 1) {
+    if (!this._ensureLoaded()) return 0;
+    let w = 0;
+    const upper = String(str).toUpperCase();
+    for (let i = 0; i < upper.length; i++) {
+      const ch = upper[i];
+      if (ch === " ") {
+        w += (this._spaceWidth + this.gap) * scale;
+        continue;
+      }
+      const idx = this.charMap[ch];
+      const m = idx === undefined ? null : this._metrics[idx];
+      const cw = m && m.width > 0 ? m.width : this._spaceWidth;
+      w += (cw + (i < upper.length - 1 ? this.gap : 0)) * scale;
+    }
+    return w;
+  }
 
   // Renders `str` left-aligned at (x, y). Returns the right-edge x.
+  // Uses per-glyph leftPad / visualWidth so narrow letters like I don't
+  // leave phantom gaps in their cells.
   draw(ctx, str, x, y, color = "#fff", scale = 1) {
     const atlas = this._atlas(color);
     if (!atlas) return x;
     const upper = String(str).toUpperCase();
     let cx = x;
-    for (const ch of upper) {
+    for (let i = 0; i < upper.length; i++) {
+      const ch = upper[i];
+      if (ch === " ") { cx += (this._spaceWidth + this.gap) * scale; continue; }
       const idx = this.charMap[ch];
-      if (idx === undefined) { cx += this.advance * scale; continue; }
-      const sx = (idx % this.cols) * this.gw;
-      const sy = Math.floor(idx / this.cols) * this.gh;
-      // Glyphs are drawn at their full source size (gw × gh) but advance is
-      // typically `gw - 1` so neighbours sit tight, matching the cabinet.
-      ctx.drawImage(atlas, sx, sy, this.gw, this.gh, Math.floor(cx), Math.floor(y), this.gw * scale, this.gh * scale);
-      cx += this.advance * scale;
+      const m = idx === undefined ? null : this._metrics[idx];
+      if (!m || m.width === 0) {
+        cx += (this._spaceWidth + this.gap) * scale;
+        continue;
+      }
+      const srcCol = idx % this.cols;
+      const srcRow = Math.floor(idx / this.cols);
+      const sx = srcCol * this.gw + m.leftPad;
+      const sy = srcRow * this.gh;
+      ctx.drawImage(
+        atlas,
+        sx, sy, m.width, this.gh,
+        Math.round(cx), Math.round(y), m.width * scale, this.gh * scale,
+      );
+      cx += (m.width + this.gap) * scale;
     }
     return cx;
   }
@@ -179,22 +250,24 @@ export class Render {
     this.ctx = canvas.getContext("2d");
     this.assets = assets;
     this.layout = this._computeLayout();
-    // ROM-extracted fonts. Asset images may still be loading; the font looks
-    // up its image key on every draw so it picks them up automatically.
-    // Small font advances by 7 (not 8) — the ROM glyphs are 7 px wide with a
-    // 1 px right-padding column the cabinet doesn't waste.
-    this.fontSmall = new BitmapFont(assets, "textAlphabet",      8,  8,  SMALL_GLYPH_INDEX, 7);
-    this.fontLarge = new BitmapFont(assets, "textAlphabetLarge", 16, 16, LARGE_GLYPH_INDEX, 14);
+    // ROM-extracted fonts. Each glyph's actual pixel width is measured at
+    // load time so narrow letters (I, J, etc.) advance by their own width
+    // + 1 px gap rather than wasting fixed-size cell padding. Same as a
+    // proper proportional bitmap font.
+    this.fontSmall = new BitmapFont(assets, "textAlphabet",      8,  8,  SMALL_GLYPH_INDEX, 1);
+    this.fontLarge = new BitmapFont(assets, "textAlphabetLarge", 16, 16, LARGE_GLYPH_INDEX, 1);
   }
 
   _computeLayout() {
     const W = this.canvas.width, H = this.canvas.height;
 
-    // The cabinet HUD is 80 native pixels wide (set by the GAUNTLET sidebar
-    // logo) by 240 native pixels tall (full arcade screen). We render at an
-    // integer scale K so every pixel of the ROM-extracted art lands on a
-    // whole device pixel — same crispness as the original.
-    const NATIVE_HUD_W = 80;
+    // The cabinet HUD column is 96 native pixels wide. The GAUNTLET sidebar
+    // PNG is 80 px wide (centred with 8 px margin on each side), and the
+    // SCORE / HEALTH labels in the proportional ROM font need ~88 px to sit
+    // side-by-side without colliding. Native height = 240 (full arcade).
+    // Everything renders at integer scale K so each ROM pixel lands on a
+    // whole device pixel.
+    const NATIVE_HUD_W = 96;
     const NATIVE_H     = 240;
     const K = Math.max(1, Math.floor(H / NATIVE_H));
     const hudW = NATIVE_HUD_W * K;
@@ -477,13 +550,9 @@ export class Render {
       ctx.fillRect(p.x+4, p.y+4, TILE-8, TILE-8);
     }
 
-    // Player number tag
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(p.x + TILE - 11, p.y + TILE - 11, 10, 10);
-    ctx.fillStyle = p.type.color;
-    ctx.font = "bold 9px " + FONT;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(String(p.slot + 1), p.x + TILE - 6, p.y + TILE - 5.5);
+    // No in-world player tag. The cabinet identifies players by colour /
+    // sprite alone; the HUD column on the right is the source of truth for
+    // which slot is which.
   }
 
   // --- HUD -----------------------------------------------------------------
@@ -530,15 +599,14 @@ export class Render {
     // GAUNTLET sidebar logo (the ROM-extracted decal). Native 80×24 at y=2.
     this._drawSidebarLogo(ctx, sx(0), sy(2), nW * K, 24 * K);
 
-    // "LEVEL" label and big number.
-    this.fontSmall.drawCentered(ctx, "LEVEL", sx(nW / 2), sy(32), "#fff", K);
+    // "LEVEL" label centred. Use the proportional measure to centre exactly.
+    const levelW = this.fontSmall.measure("LEVEL", 1);
+    this.fontSmall.draw(ctx, "LEVEL", sx((nW - levelW) / 2), sy(32), "#fff", K);
+
+    // Big level number using the dedicated 16×16 large-digit ROM atlas.
     const num = (levelName || "").match(/\d+/)?.[0] || "1";
-    this.fontLarge.draw(
-      ctx, num,
-      sx(nW / 2) - this.fontLarge.measure(num, K) / 2,
-      sy(44),
-      "#fff", K,
-    );
+    const numW = this.fontLarge.measure(num, 1);
+    this.fontLarge.draw(ctx, num, sx((nW - numW) / 2), sy(44), "#fff", K);
 
     // Four hero blocks. Each block is 24 native px tall; we add a 6 px gap
     // between blocks so the name of the next hero doesn't crash into the
@@ -549,9 +617,11 @@ export class Render {
       this._drawHeroBlock(ctx, players[slot], px, blockY, nW, K, frame);
     }
 
-    // Footer at the bottom of the panel. Native y = (240 - 16) = 224 / 232.
-    this.fontSmall.drawCentered(ctx, "1985",        sx(nW / 2), sy(220), "#fff", K);
-    this.fontSmall.drawCentered(ctx, "ATARI GAMES", sx(nW / 2), sy(228), "#fff", K);
+    // Footer at the bottom of the panel. Centre via measured widths.
+    const yearW  = this.fontSmall.measure("1985",        1);
+    const atariW = this.fontSmall.measure("ATARI GAMES", 1);
+    this.fontSmall.draw(ctx, "1985",        sx((nW - yearW)  / 2), sy(220), "#fff", K);
+    this.fontSmall.draw(ctx, "ATARI GAMES", sx((nW - atariW) / 2), sy(228), "#fff", K);
   }
 
   // Draw a single 24-native-tall hero block at the given native Y.
@@ -568,48 +638,107 @@ export class Render {
     const colorDim    = dimColor(t.color, 0.45);
     const nameColor   = p.joined ? colorBright : colorDim;
 
-    // Hero name centred. "WARRIOR" = 7×7 = 49 native px in the 80-wide panel.
-    this.fontSmall.drawCentered(ctx, t.key.toUpperCase(), sx(nativeW / 2), sy(0), nameColor, K);
+    // Hero name centred via proportional measure.
+    const name = t.key.toUpperCase();
+    const nameW = this.fontSmall.measure(name, 1);
+    this.fontSmall.draw(ctx, name, sx(Math.floor((nativeW - nameW) / 2)), sy(0), nameColor, K);
 
-    // Two-column layout for SCORE+value and HEALTH+value.
-    // Native column 1: SCORE (5×7 = 35 px) starts at native x = 0
-    // Native column 2: HEALTH (6×7 = 42 px) starts at native x = 38
-    // 4-digit values (4×7 = 28 px) centred under each label.
-    const col1Left = 0;             // SCORE column
-    const col1W    = 35;
-    const col2Left = 38;            // HEALTH column
-    const col2W    = 42;
+    // Two-column layout for SCORE+value and HEALTH+value. We measure each
+    // label with the proportional font and centre the column on whichever
+    // is wider. Two columns share the panel width with a small middle gap.
+    const labelGap = 4; // native px between the two columns
+    const scoreW  = this.fontSmall.measure("SCORE", 1);
+    const healthW = this.fontSmall.measure("HEALTH", 1);
+    const valueW  = this.fontSmall.measure("0000", 1);
+    const col1W   = Math.max(scoreW, valueW);
+    const col2W   = Math.max(healthW, valueW);
+    const totalW  = col1W + labelGap + col2W;
+    const col1Left = Math.floor((nativeW - totalW) / 2);
+    const col2Left = col1Left + col1W + labelGap;
 
-    this.fontSmall.draw(ctx, "SCORE",  sx(col1Left), sy(10), nameColor, K);
-    this.fontSmall.draw(ctx, "HEALTH", sx(col2Left), sy(10), nameColor, K);
+    // Centre each label inside its column.
+    this.fontSmall.draw(ctx, "SCORE",  sx(col1Left + Math.floor((col1W - scoreW)  / 2)), sy(10), nameColor, K);
+    this.fontSmall.draw(ctx, "HEALTH", sx(col2Left + Math.floor((col2W - healthW) / 2)), sy(10), nameColor, K);
 
     if (p.joined) {
-      // Centre the value under its label.
       const score4 = this._fmtNum(p.score, 4);
       const hp4    = this._fmtNum(Math.max(0, p.health), 4);
-      const score4W = this.fontSmall.measure(score4, 1); // native px
+      const score4W = this.fontSmall.measure(score4, 1);
       const hp4W    = this.fontSmall.measure(hp4, 1);
-      this.fontSmall.draw(ctx, score4, sx(col1Left + (col1W - score4W) / 2), sy(18), "#fff", K);
+      this.fontSmall.draw(ctx, score4, sx(col1Left + Math.floor((col1W - score4W) / 2)), sy(18), "#fff", K);
 
       const weak = p.health < 200;
       const blink = weak && (Math.floor(frame / 12) % 2 === 0);
       const hpColor = weak ? (blink ? "#F90503" : "#fff") : "#fff";
-      this.fontSmall.draw(ctx, hp4, sx(col2Left + (col2W - hp4W) / 2), sy(18), hpColor, K);
+      this.fontSmall.draw(ctx, hp4, sx(col2Left + Math.floor((col2W - hp4W) / 2)), sy(18), hpColor, K);
     } else {
-      // Inactive: hero-coloured "----" placeholders.
       const dashes4 = "----";
       const dashW = this.fontSmall.measure(dashes4, 1);
-      this.fontSmall.draw(ctx, dashes4, sx(col1Left + (col1W - dashW) / 2), sy(18), colorDim, K);
-      this.fontSmall.draw(ctx, dashes4, sx(col2Left + (col2W - dashW) / 2), sy(18), colorDim, K);
+      this.fontSmall.draw(ctx, dashes4, sx(col1Left + Math.floor((col1W - dashW) / 2)), sy(18), colorDim, K);
+      this.fontSmall.draw(ctx, dashes4, sx(col2Left + Math.floor((col2W - dashW) / 2)), sy(18), colorDim, K);
     }
   }
 
   _drawSidebarLogo(ctx, x, y, w, h) {
     const img = this.assets.images.textGauntletSide || this.assets.images.textGauntlet;
     if (!img || !img.naturalWidth) return;
-    // Red drop-shadow underlay then the white logo on top.
-    this._drawTinted(ctx, img, x + 2, y + 2, w, h, "#9a0a0a");
-    ctx.drawImage(img, x, y, w, h);
+    // Measure the logo's actual content bbox so we don't render past the
+    // panel edge. The sidebar PNG has some transparent padding around the
+    // letterforms; we want to draw exactly the painted pixels into the
+    // available slot.
+    const bbox = this._logoBbox(img);
+    const srcX = bbox.x, srcY = bbox.y, srcW = bbox.w, srcH = bbox.h;
+    const scale = Math.min(w / srcW, h / srcH);
+    const dw = Math.floor(srcW * scale), dh = Math.floor(srcH * scale);
+    const dx = x + Math.floor((w - dw) / 2), dy = y + Math.floor((h - dh) / 2);
+    // Red drop-shadow underlay, then the original logo on top.
+    this._drawTintedRegion(ctx, img, srcX, srcY, srcW, srcH, dx + 1, dy + 1, dw, dh, "#9a0a0a");
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
+  }
+
+  // Cache the logo content bbox after first measurement.
+  _logoBbox(img) {
+    if (this._logoBboxCache) return this._logoBboxCache;
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, c.width, c.height).data;
+    let minX = c.width, minY = c.height, maxX = -1, maxY = -1;
+    for (let py = 0; py < c.height; py++) {
+      for (let px = 0; px < c.width; px++) {
+        const i = (py * c.width + px) << 2;
+        const a = data[i+3];
+        const lum = (data[i] + data[i+1] + data[i+2]) / 3;
+        if (a > 30 && lum > 30) {
+          if (px < minX) minX = px;
+          if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          if (py > maxY) maxY = py;
+        }
+      }
+    }
+    if (maxX < 0) {
+      this._logoBboxCache = { x: 0, y: 0, w: c.width, h: c.height };
+    } else {
+      this._logoBboxCache = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    }
+    return this._logoBboxCache;
+  }
+
+  _drawTintedRegion(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh, color) {
+    if (!this._tintTmp) this._tintTmp = document.createElement("canvas");
+    const tmp = this._tintTmp;
+    tmp.width = sw; tmp.height = sh;
+    const g = tmp.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.clearRect(0, 0, sw, sh);
+    g.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = color;
+    g.fillRect(0, 0, sw, sh);
+    ctx.drawImage(tmp, 0, 0, sw, sh, dx, dy, dw, dh);
   }
 
   // Helper: draws `img` tinted to `color`, scaled to (dw, dh) at (dx, dy).
