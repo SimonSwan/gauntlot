@@ -46,6 +46,32 @@ Assets reused with permission of their MIT-licensed authors:
 - Game-feel constants (player speeds, monster behaviour, AI direction tables)
   ported and adapted from javascript-gauntlet.
 
+## ROM-accurate level pack
+
+The game ships with the 7 hand-crafted training levels + 10 dungeons from
+javascript-gauntlet (which load straight as PNG-encoded tile maps), and a
+**second 100-level pack converted directly from the original Gauntlet 1 MAME
+ROM** — using gex's pre-rendered ROM dumps as the source of truth.
+
+The pipeline lives in `tools/convert-rom-mazes.mjs`. It reads each gex
+560×560 PNG, samples the 32×32 grid of 16×16 stamps, and classifies each tile
+by luminance + textural variance + dominant exotic colour:
+
+- High-variance + medium-bright → wall
+- Very-dark, low-variance → out-of-bounds
+- Bright exotic colour cluster → generator / monster / treasure (further
+  classified by hue)
+- Otherwise → walkable floor
+
+To regenerate after dropping a fresh batch of `gex` dumps in `assets/mazes/`:
+
+```
+node tools/convert-rom-mazes.mjs
+```
+
+The 100-level dungeon progression in `src/game.js` references the converted
+files so they play immediately after the trainer levels.
+
 ## Architecture
 
 - `src/main.js` — entry point.

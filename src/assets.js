@@ -131,6 +131,11 @@ const LEVEL_LIST = [
   "assets/levels-jg/level8.png",
   "assets/levels-jg/level9.png",
   "assets/levels-jg/level10.png",
+  // ROM-extracted Gauntlet 1 mazes (converted via tools/convert-rom-mazes.mjs).
+  // 115 mazes; we only wire the first batch into the level progression by default.
+  ...Array.from({ length: 115 }, (_, i) =>
+    `assets/levels-rom/maze${String(i + 1).padStart(3, "0")}.png`
+  ),
 ];
 
 function loadImage(url) {
