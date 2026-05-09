@@ -1,99 +1,55 @@
 // Asset loader: pre-loads images, level PNGs, and audio.
+//
+// Sprite paths point at the Nostromo placeholder atlas. When the user drops
+// the real sprite-sheet PNG in, replace the files in assets/nostromo/ —
+// no code change needed.
 
 const IMAGE_LIST = {
-  // Players: 9x8 grid of 24x24 sprites (rows = 8 directions, cols = animation/state frames)
-  warrior:        "assets/sprites/player-warrior-sprite-sheet.png",
-  warriorWeapon:  "assets/sprites/player-warrior-weapon-sprite-sheet.png",
-  warriorExit:    "assets/sprites/player-warrior-exit-sprite-sheet.png",
-  valkyrie:       "assets/sprites/player-valkyrie-sprite-sheet.png",
-  valkyrieWeapon: "assets/sprites/player-valkyrie-weapon-sprite-sheet.png",
-  valkyrieExit:   "assets/sprites/player-valkyrie-exit-sprite-sheet.png",
-  wizard:         "assets/sprites/player-wizard-sprite-sheet.png",
-  wizardWeapon:   "assets/sprites/player-wizard-weapon-sprite-sheet.png",
-  wizardExit:     "assets/sprites/player-wizard-exit-sprite-sheet.png",
-  elf:            "assets/sprites/player-elf-sprite-sheet.png",
-  elfWeapon:      "assets/sprites/player-elf-weapon-sprite-sheet.png",
-  elfExit:        "assets/sprites/player-elf-exit-sprite-sheet.png",
-  spawn:          "assets/sprites/player-spawn-sprite-sheet.png",
+  // Heroes
+  marine:        "assets/nostromo/player-marine-sprite-sheet.png",
+  tech:          "assets/nostromo/player-tech-sprite-sheet.png",
+  smuggler:      "assets/nostromo/player-smuggler-sprite-sheet.png",
+  synthetic:     "assets/nostromo/player-synthetic-sprite-sheet.png",
 
-  // Monsters
-  ghost:          "assets/sprites/monster-ghost1-sprite-sheet.png",
-  ghost2:         "assets/sprites/monster-ghost2-sprite-sheet.png",
-  ghost3:         "assets/sprites/monster-ghost3-sprite-sheet.png",
-  grunt:          "assets/sprites/monster-grunt1-sprite-sheet.png",
-  grunt2:         "assets/sprites/monster-grunt2-sprite-sheet.png",
-  grunt3:         "assets/sprites/monster-grunt3-sprite-sheet.png",
-  demon:          "assets/sprites/monster-demon1-sprite-sheet.png",
-  demon2:         "assets/sprites/monster-demon2-sprite-sheet.png",
-  demon3:         "assets/sprites/monster-demon3-sprite-sheet.png",
-  sorcerer:       "assets/sprites/monster-sorcerer1-sprite-sheet.png",
-  sorcerer2:      "assets/sprites/monster-sorcerer2-sprite-sheet.png",
-  sorcerer3:      "assets/sprites/monster-sorcerer3-sprite-sheet.png",
-  lobber:         "assets/sprites/monster-lobber1-sprite-sheet.png",
-  lobber2:        "assets/sprites/monster-lobber2-sprite-sheet.png",
-  lobber3:        "assets/sprites/monster-lobber3-sprite-sheet.png",
-  lobberFx:       "assets/sprites/monster-lobber-exlosion-sprite-sheet.png",
-  death:          "assets/sprites/monster-death.png",
-  thief:          "assets/sprites/monster-thief-sprite-sheet.png",
-  monsterDeath:   "assets/sprites/monster-death.png",
-  ghostGen:       "assets/sprites/monster-ghost-generator.png",
-  monsterGen:     "assets/sprites/monster-monster-generator.png",
+  // Xenomorph enemies (occupying the ghost/demon/grunt/lobber/death gameplay slots)
+  drone:         "assets/nostromo/monster-drone-sprite-sheet.png",
+  spitter:       "assets/nostromo/monster-spitter-sprite-sheet.png",
+  runner:        "assets/nostromo/monster-runner-sprite-sheet.png",
+  praetorian:    "assets/nostromo/monster-praetorian-sprite-sheet.png",
+  protoXeno:     "assets/nostromo/monster-protoXeno-sprite-sheet.png",
 
-  // Items
-  key:            "assets/sprites/dungeon-key.png",
-  keyring:        "assets/sprites/dungeon-keyring.png",
-  potionBlue:     "assets/sprites/dungeon-potion-blue.png",
-  potionOrange:   "assets/sprites/dungeon-potion-orange.png",
-  potionWeapon:   "assets/sprites/dungeon-potion-weapon.png",
-  potionArmor:    "assets/sprites/dungeon-potion-extra-armor.png",
-  potionSpeed:    "assets/sprites/dungeon-potion-extra-speed.png",
-  potionMagic:    "assets/sprites/dungeon-potion-extra-magic.png",
-  potionPower:    "assets/sprites/dungeon-potion-extra-shot-power.png",
-  potionShot:     "assets/sprites/dungeon-potion-extra-shot-speed.png",
-  invis:          "assets/sprites/dungeon-limited-invisibility.png",
-  foodHam:        "assets/sprites/dungeon-food-ham.png",
-  foodTurkey:     "assets/sprites/dungeon-food-turkey.png",
-  foodDrumstick:  "assets/sprites/dungeon-food-drumstick.png",
-  foodJug:        "assets/sprites/dungeon-food-jug.png",
-  treasureBag:    "assets/sprites/dungeon-treasure-bag.png",
-  treasureChest:  "assets/sprites/dungeon-treasure-chest-sprite-sheet.png",
+  // Synthetic enemies (sorcerer + thief slots)
+  synthSecurity: "assets/nostromo/monster-synthSecurity-sprite-sheet.png",
+  workerAndroid: "assets/nostromo/monster-workerAndroid-sprite-sheet.png",
 
-  // Walls / floor / exits
-  wallH:          "assets/sprites/dungeon-wall-horizontal.png",
-  wallV:          "assets/sprites/dungeon-wall-vertical.png",
-  wallC:          "assets/sprites/dungeon-wall-corners.png",
-  exit:           "assets/sprites/dungeon-exit.png",
-  exitTo4:        "assets/sprites/dungeon-exit-to-4.png",
-  exitTo8:        "assets/sprites/dungeon-exit-to-8.png",
-  teleport:       "assets/sprites/dungeon-teleport-sprite-sheet.png",
+  // Generators (re-use existing arcade gen sprites for now)
+  ghostGen:      "assets/sprites/monster-ghost-generator.png",
+  monsterGen:    "assets/sprites/monster-monster-generator.png",
 
-  // Pre-decoded playfield tile atlas (Jake Gordon's javascript-gauntlet,
-  // sourced from opengameart.org/content/gauntlet-like-tiles). 512×256 of
-  // 32×32 cells: row 0 = 9 floor themes, rows 1-6 = 6 wall themes (each row
-  // has 16 mask variants), row 7 = 8 shadow variants.
-  backgrounds:    "assets/sprites/backgrounds.png",
+  // Pickups
+  medkit:        "assets/nostromo/pickup-medkit.png",
+  ammo:          "assets/nostromo/pickup-ammo.png",
+  oxygen:        "assets/nostromo/pickup-oxygen.png",
+  adrenaline:    "assets/nostromo/pickup-adrenaline.png",
+  accessCard:    "assets/nostromo/pickup-accessCard.png",
+  emp:           "assets/nostromo/pickup-emp.png",
+  credits:       "assets/nostromo/pickup-credits.png",
+  dataCore:      "assets/nostromo/pickup-dataCore.png",
+  poison:        "assets/nostromo/pickup-poison.png",
+
+  // Doors / exits
+  exit:          "assets/sprites/dungeon-exit.png",
 
   // FX
-  explosion:      "assets/sprites/explosion-collision-sprite-sheet.png",
-  explosionTeleport: "assets/sprites/explosion-teleport-sprite-sheet.png",
-  explosionLobber:"assets/sprites/monster-lobber-exlosion-sprite-sheet.png",
+  explosion:     "assets/sprites/explosion-collision-sprite-sheet.png",
 
-  // UI
-  textGauntlet:        "assets/sprites/text-gauntlet.png",
-  textPoints:          "assets/sprites/text-points.png",
-  iconKey:             "assets/sprites/icon-key.png",
-  iconPotion:          "assets/sprites/icon-potion.png",
-  iconUpgrades:        "assets/sprites/icon-upgrades.png",
-
-  // ROM-extracted bitmap fonts (alphanumeric ROM 136037-104.6p decoded by
-  // mbeisser1/gauntlet_mame_gfx).
-  //
-  //   textAlphabet       80×128 small 8×8 font: A-Z, 0-9, punctuation
-  //   textAlphabetLarge  16×176 large 16×16 digits 0-9 plus letter A
-  //   textGauntletSide   80×24  cabinet sidebar GAUNTLET logo
+  // ROM-extracted bitmap font (kept — same alphabet)
   textAlphabet:        "assets/sprites/text-an-alphabet.png",
   textAlphabetLarge:   "assets/sprites/text-an-alphabet-large-0-9A.png",
-  textGauntletSide:    "assets/sprites/text-an-gauntlet-sidebar.png",
+
+  // Sci-fi tile atlas (procedurally generated for now; same 16x8 layout
+  // as the Gauntlet backgrounds.png so render.js's mask math works).
+  backgrounds:    "assets/nostromo/tiles.png",
 };
 
 const SOUND_LIST = {
@@ -129,7 +85,8 @@ const SOUND_LIST = {
   music_warbringer:      "assets/sounds/music.warbringer.mp3",
 };
 
-// 115 ROM-extracted Gauntlet 1 mazes (converted via tools/convert-rom-mazes.mjs).
+// 115 ROM-extracted Gauntlet 1 mazes (treated as derelict-ship deck plans
+// for the Nostromo theme — same wall/floor mask logic).
 const LEVEL_LIST = Array.from({ length: 115 }, (_, i) =>
   `assets/levels-rom/maze${String(i + 1).padStart(3, "0")}.png`
 );
@@ -149,7 +106,6 @@ function loadAudio(url) {
     a.addEventListener("canplaythrough", () => resolve(a), { once: true });
     a.addEventListener("error", () => { console.warn("missing audio:", url); resolve(null); }, { once: true });
     a.src = url;
-    // Some browsers need a timeout fallback
     setTimeout(() => resolve(a), 4000);
   });
 }
@@ -158,7 +114,7 @@ export class Assets {
   constructor() {
     this.images = {};
     this.sounds = {};
-    this.levels = []; // [{name, image, w, h, pixels}]
+    this.levels = [];
   }
   async loadAll(progress) {
     const tasks = [];
