@@ -85,29 +85,20 @@ const SOUND_LIST = {
   music_warbringer:      "assets/sounds/music.warbringer.mp3",
 };
 
-// Hand-crafted Gauntlet levels from jakesgordon/javascript-gauntlet — 7 trainers
-// + 10 dungeons. Each PNG is a tile-per-pixel map in the encoding documented in
-// the README. The auto-converted ROM dumps in levels-rom/ are noise; these are
-// the actual playable maps.
-const LEVEL_LIST = [
-  "assets/levels-jg/trainer1.png",
-  "assets/levels-jg/trainer2.png",
-  "assets/levels-jg/trainer3.png",
-  "assets/levels-jg/trainer4.png",
-  "assets/levels-jg/trainer5.png",
-  "assets/levels-jg/trainer6.png",
-  "assets/levels-jg/trainer7.png",
-  "assets/levels-jg/level1.png",
-  "assets/levels-jg/level2.png",
-  "assets/levels-jg/level3.png",
-  "assets/levels-jg/level4.png",
-  "assets/levels-jg/level5.png",
-  "assets/levels-jg/level6.png",
-  "assets/levels-jg/level7.png",
-  "assets/levels-jg/level8.png",
-  "assets/levels-jg/level9.png",
-  "assets/levels-jg/level10.png",
+// The original Atari Gauntlet 1 ROM mazes, reconstructed from gex's
+// pre-rendered reference PNGs by tools/template-match-mazes.mjs. Each PNG is
+// a 33x33 tile grid in the same encoding the level loader already uses. The
+// numbering matches gex's maze-NNN ROM addresses; gaps (e.g. 050, 114-149)
+// reflect mazes gex couldn't decode.
+const MAZE_NUMBERS = [
+  ...Array.from({ length: 49  }, (_, i) => i + 1),     // 001-049
+  ...Array.from({ length: 63  }, (_, i) => i + 51),    // 051-113
+  150, 151,
 ];
+const LEVEL_LIST = MAZE_NUMBERS.map(
+  n => `assets/levels-rom/maze${String(n).padStart(3, "0")}.png`
+);
+export { MAZE_NUMBERS };
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
