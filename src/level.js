@@ -100,8 +100,14 @@ export class Level {
   }
   remove(entity) {
     entity.dead = true;
-    if (entity.cells) for (const c of entity.cells) {
-      const i = c.occupied.indexOf(entity); if (i >= 0) c.occupied.splice(i, 1);
+    this._removeFromCells(entity);
+  }
+  _removeFromCells(entity) {
+    if (entity.cells) {
+      for (const c of entity.cells) {
+        const i = c.occupied.indexOf(entity);
+        if (i >= 0) c.occupied.splice(i, 1);
+      }
     }
     entity.cells = [];
   }
@@ -144,10 +150,18 @@ export class Level {
   occupied(x, y, w, h, ignore) {
     const cells = this.overlappingCells(x, y, w, h);
     const checked = new Set();
+    const ignoreIsPlayer = !!ignore?.player;
+    const ignoreIsWeapon = !!ignore?.weapon;
     for (const cell of cells) {
       if (cell.wall) return true;
       for (const item of cell.occupied) {
-        if (item === ignore || checked.has(item)) continue;
+        if (item === ignore || item.dead || checked.has(item)) continue;
+        // Players pass through other players (arcade-faithful 4-player behaviour).
+        if (ignoreIsPlayer && item.player) continue;
+        // FX never block anyone.
+        if (item.fx) continue;
+        // Weapons never block — they handle their own collision in Weapon.update.
+        if (item.weapon) continue;
         checked.add(item);
         const ix = item.x + (item.cbox?.x ?? 0);
         const iy = item.y + (item.cbox?.y ?? 0);
@@ -181,8 +195,16 @@ export class Level {
     for (const e of this.entities) {
       if (!e.dead && e.update) e.update(dt, frame, players, this, viewport);
     }
-    // sweep dead
-    for (let i = this.entities.length - 1; i >= 0; i--) if (this.entities[i].dead) this.entities.splice(i, 1);
+    // Sweep dead entities. CRUCIAL: also unlink them from cell.occupied — a
+    // dead monster that still occupies its cell creates "ghost walls" that
+    // block player movement and bullets.
+    for (let i = this.entities.length - 1; i >= 0; i--) {
+      const e = this.entities[i];
+      if (e.dead) {
+        this._removeFromCells(e);
+        this.entities.splice(i, 1);
+      }
+    }
   }
 }
 

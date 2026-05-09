@@ -116,28 +116,40 @@ export class Player {
     }
     if (dir < 0) return;
 
-    // try slide-style movement
+    // Slide-along-walls movement, exactly as Jake Gordon's PLAYER update:
+    //
+    //   for each direction in SLIDE_DIRECTIONS[dir]:
+    //     trymove(direction)
+    //       - if it succeeded (no collision): we moved, return
+    //       - else publish PLAYER_COLLIDE for the collider, and CONTINUE the
+    //         slide loop with the next direction
+    //
+    // We inline the collide handler here so the player either picks up the
+    // treasure, opens the door, exits the level, or whacks the monster.
     const dirs = SLIDE_DIRECTIONS[dir];
     for (const d of dirs) {
       const collision = level.trymove(this, d, this.type.speed);
-      if (collision === false) return;
-      // collide with stuff
-      if (collision === true) continue;
-      if (collision.treasure) collision.collect(this);
-      else if (collision.door) {
-        if (this.keys > 0 && collision.open()) this.keys--;
-      } else if (collision.exit) this._exitTo(collision);
-      else if (collision.monster) {
-        // ramming — deal damage to monster, take damage from monster
-        collision.health -= this.type.damage;
-        if (collision.health <= 0) { collision.dead = true; collision.die?.(this, false); this.score += collision.type.score; }
-        this.hurt(collision.type.damage, collision);
-      } else if (collision.generator) {
+      if (!collision) return;             // moved, done
+      if (collision === true) continue;   // wall, try the next slide direction
+
+      // entity collision — publish-style handler matching Jake's onPlayerCollide:
+      //   monsters / generators take damage from the player
+      //   treasures get collected
+      //   doors open if we hold a key
+      //   exits trigger the exit sequence
+      // The player only takes damage from monsters via Monster.update, NOT here,
+      // so colliding with a monster doesn't double-tap the player.
+      if (collision.monster || collision.generator) {
         collision.hurt(this.type.damage, this);
-        this.hurt(2, collision);
+      } else if (collision.treasure) {
+        collision.collect(this);
+      } else if (collision.door) {
+        if (this.keys > 0 && collision.open()) this.keys--;
+      } else if (collision.exit) {
+        this._exitTo(collision);
       }
-      // continue trying other slide directions if blocked by walls only
-      if (collision !== true) return;
+      // try the remaining slide directions even after an entity collision —
+      // this is what makes the player "stutter past" a treasure on the wall.
     }
   }
 
@@ -193,6 +205,8 @@ export class Player {
 
   _die() {
     this.dead = true;
+    // Release cell occupancy so monsters don't pile up on the corpse tile.
+    this.level?._removeFromCells(this);
     this.level?.game?.sounds.play("gameover", 0.5);
     this.level?.game?.sounds.say(`${this.type.name.split(" ")[0]} is about to die!`, { cooldown: 4000 });
   }

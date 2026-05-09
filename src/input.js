@@ -79,7 +79,10 @@ export class Input {
       this._lastPadStart[i] = !!s;
       this._lastPad[i] = !!a;
     }
-    if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+    // NOTE: do NOT normalise diagonal input. Arcade Gauntlet moves at full
+    // speed on both axes simultaneously when going diagonal — the diagonal is
+    // intentionally faster. The player only uses the sign of dx/dy to pick a
+    // DIR; the actual world step comes from `type.speed` in `level.trymove`.
     return { dx, dy, shoot, magic, start, join };
   }
 }
