@@ -42,8 +42,10 @@ export class Game {
     ];
     this.activeTypes = [null, null, null, null]; // chosen type indices per slot during select
 
-    this.viewport = { x: 0, y: 0, w: this.render.viewW, h: this.render.viewH, outside: () => false };
+    this.viewport = { x: 0, y: 0, w: 320, h: 320, outside: () => false };
     this.viewport.outside = (x, y, w, h) => (x + w < this.viewport.x || x > this.viewport.x + this.viewport.w || y + h < this.viewport.y || y > this.viewport.y + this.viewport.h);
+    this._refreshViewportSize();
+    window.addEventListener("resize", () => this._refreshViewportSize());
 
     this.levelIndex = 0;
     this.level = null;
@@ -62,13 +64,16 @@ export class Game {
 
   _renderBoot() {
     const ctx = this.canvas.getContext("2d");
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.fillStyle = "#999"; ctx.font = "16px monospace";
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60));
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#999"; ctx.font = `bold ${u*3}px monospace`;
     ctx.textAlign = "center";
     const p = this._loadProgress;
-    ctx.fillText("LOADING…", this.canvas.width/2, this.canvas.height/2 - 12);
-    ctx.fillStyle = "#444"; ctx.fillRect(this.canvas.width/2 - 100, this.canvas.height/2, 200, 8);
-    ctx.fillStyle = "#0c0"; ctx.fillRect(this.canvas.width/2 - 100, this.canvas.height/2, 200 * (p.done/Math.max(1,p.total)), 8);
+    ctx.fillText("LOADING…", W/2, H/2 - u*2);
+    const barW = Math.floor(W * 0.4), barH = u;
+    ctx.fillStyle = "#444"; ctx.fillRect(W/2 - barW/2, H/2, barW, barH);
+    ctx.fillStyle = "#0c0"; ctx.fillRect(W/2 - barW/2, H/2, barW * (p.done/Math.max(1,p.total)), barH);
     requestAnimationFrame(() => { if (this.state === STATE.BOOT) this._renderBoot(); });
   }
 
@@ -92,44 +97,52 @@ export class Game {
   // -------- TITLE --------
   _title() {
     const ctx = this.canvas.getContext("2d");
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60)); // base unit
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
 
-    // Title text glow
-    const t = this.frame * 0.02;
-    ctx.save();
-    ctx.translate(this.canvas.width/2, this.canvas.height/2 - 80);
+    // Big arcade GAUNTLET logo, snapped to integer pixel scale.
     const img = this.assets.images.textGauntlet;
     if (img && img.naturalWidth) {
-      const scale = 2;
-      ctx.drawImage(img, -img.width*scale/2, 0, img.width*scale, img.height*scale);
+      const scale = Math.max(2, Math.floor(W * 0.5 / img.width));
+      const dw = img.width * scale, dh = img.height * scale;
+      ctx.drawImage(img, Math.floor((W - dw)/2), Math.floor(H * 0.18), dw, dh);
     } else {
-      ctx.fillStyle = "#ffd24a"; ctx.font = "bold 48px monospace"; ctx.textAlign = "center";
-      ctx.shadowColor = "#f63"; ctx.shadowBlur = 16 + Math.sin(t)*6;
-      ctx.fillText("GAUNTLET", 0, 32);
+      ctx.fillStyle = "#ffd24a"; ctx.font = `bold ${u*8}px monospace`; ctx.textAlign = "center";
+      ctx.fillText("GAUNTLET", W/2, H * 0.25);
     }
-    ctx.restore();
 
-    ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Press any key or button to begin", this.canvas.width/2, this.canvas.height/2 + 8);
-    ctx.fillStyle = "#888"; ctx.font = "11px monospace";
-    ctx.fillText("Up to 4 players — keyboard or gamepad", this.canvas.width/2, this.canvas.height/2 + 28);
-    ctx.fillText("P1 WASD+G/H   P2 IJKL+;/'   P3 ARROWS+./,   P4 NUMPAD", this.canvas.width/2, this.canvas.height/2 + 44);
-
-    // four hero portraits
-    const cy = this.canvas.height - 140;
+    // Four hero standing portraits across the middle.
+    const portraitSize = Math.max(96, Math.floor(H * 0.18 / 24) * 24);
+    const cy = Math.floor(H * 0.55);
+    const gap = Math.floor(W * 0.06);
+    const totalW = portraitSize * 4 + gap * 3;
+    let x0 = (W - totalW) / 2;
     for (let i = 0; i < 4; i++) {
       const t = this.players[i].type;
-      const x = this.canvas.width/2 + (i - 1.5) * 100;
       const sheet = this.assets.images[t.key];
       if (sheet && sheet.naturalWidth) {
-        ctx.drawImage(sheet, 0, 4*24, 24, 24, x - 24, cy, 48, 48);
+        ctx.drawImage(sheet, 0, 4*24, 24, 24, x0, cy, portraitSize, portraitSize);
       } else {
-        ctx.fillStyle = t.color;
-        ctx.fillRect(x - 24, cy, 48, 48);
+        ctx.fillStyle = t.color; ctx.fillRect(x0, cy, portraitSize, portraitSize);
       }
-      ctx.fillStyle = t.color; ctx.font = "11px monospace"; ctx.textAlign = "center";
-      ctx.fillText(t.key.toUpperCase(), x, cy + 60);
+      ctx.fillStyle = t.color; ctx.font = `bold ${u*2}px monospace`; ctx.textAlign = "center";
+      ctx.fillText(t.key.toUpperCase(), x0 + portraitSize/2, cy + portraitSize + u*2);
+      x0 += portraitSize + gap;
     }
+
+    // Press start text + control reminders.
+    const blink = (Math.floor(this.frame / 20) % 2) === 0;
+    ctx.fillStyle = blink ? "#fff" : "#888";
+    ctx.font = `bold ${u*3}px monospace`; ctx.textAlign = "center";
+    ctx.fillText("PRESS START", W/2, Math.floor(H * 0.84));
+
+    ctx.fillStyle = "#666"; ctx.font = `bold ${u*1.4}px monospace`;
+    ctx.fillText("P1 WASD+G/H    P2 IJKL+;/'    P3 ARROWS+./,    P4 NUMPAD",
+      W/2, Math.floor(H * 0.92));
+    ctx.fillStyle = "#444";
+    ctx.fillText("©1985 ATARI GAMES", W/2, Math.floor(H * 0.96));
 
     if (this.input.anyPressed()) {
       this.sounds.music("music_lostcorridors", 0.4);
@@ -147,14 +160,22 @@ export class Game {
   // -------- CHARACTER SELECT --------
   _select() {
     const ctx = this.canvas.getContext("2d");
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.fillStyle = "#fff"; ctx.font = "bold 18px monospace"; ctx.textAlign = "center";
-    ctx.fillText("CHOOSE YOUR HERO", this.canvas.width/2, 40);
-    ctx.font = "12px monospace"; ctx.fillStyle = "#aaa";
-    ctx.fillText("Each player picks with arrows; SHOOT to lock in. ENTER on any locked-in player to start.", this.canvas.width/2, 64);
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60));
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#fff"; ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
+    ctx.fillText("CHOOSE YOUR HERO", W/2, u*6);
+    ctx.font = `${u*1.6}px monospace`; ctx.fillStyle = "#aaa";
+    ctx.fillText("Each player ← → to pick, SHOOT to lock in, then ENTER to begin",
+      W/2, u*9);
 
-    const cellW = this.canvas.width / 4;
+    const cellW = W / 4;
+    const portraitSize = Math.max(96, Math.floor(H * 0.20 / 24) * 24);
+    const cellTop = u*12;
+    const cellH = H - cellTop - u*8;
     let anyLocked = false;
+
     for (let i = 0; i < 4; i++) {
       const cmd = this.input.getPlayer(i);
       if (cmd.dx !== 0 && (this.frame - (this._lastDir?.[i] ?? -100)) > 8) {
@@ -173,43 +194,46 @@ export class Game {
 
       const x = i * cellW;
       ctx.fillStyle = "rgba(255,255,255,0.04)";
-      ctx.fillRect(x + 8, 100, cellW - 16, 240);
+      ctx.fillRect(x + u, cellTop, cellW - u*2, cellH);
       ctx.strokeStyle = this.activeTypes[i] !== null ? this.players[this.activeTypes[i]].type.color : "#444";
       ctx.lineWidth = 2;
-      ctx.strokeRect(x + 8, 100, cellW - 16, 240);
+      ctx.strokeRect(x + u + 1, cellTop + 1, cellW - u*2 - 2, cellH - 2);
 
-      ctx.fillStyle = "#fff"; ctx.font = "bold 12px monospace"; ctx.textAlign = "center";
-      ctx.fillText(`PLAYER ${i+1}`, x + cellW/2, 120);
+      ctx.fillStyle = "#fff"; ctx.font = `bold ${u*2}px monospace`; ctx.textAlign = "center";
+      ctx.fillText(`PLAYER ${i+1}`, x + cellW/2, cellTop + u*3);
 
       const idx = this._selectIdx[i];
       const t = PLAYER_TYPES[PLAYER_LIST[idx]];
       const img = this.assets.images[t.key];
+      const px = x + cellW/2 - portraitSize/2;
+      const py = cellTop + u*5;
       if (img && img.naturalWidth) {
-        ctx.drawImage(img, 0, 4*24, 24, 24, x + cellW/2 - 36, 140, 72, 72);
+        ctx.drawImage(img, 0, 4*24, 24, 24, px, py, portraitSize, portraitSize);
       } else {
-        ctx.fillStyle = t.color; ctx.fillRect(x + cellW/2 - 36, 140, 72, 72);
+        ctx.fillStyle = t.color; ctx.fillRect(px, py, portraitSize, portraitSize);
       }
-      ctx.fillStyle = t.color; ctx.font = "bold 13px monospace";
-      ctx.fillText(t.key.toUpperCase(), x + cellW/2, 232);
-      ctx.fillStyle = "#aaa"; ctx.font = "10px monospace";
-      ctx.fillText(t.name, x + cellW/2, 248);
-      ctx.fillText(`HP ${t.health}  ARM ${t.armor}  MAG ${t.magic}`, x + cellW/2, 262);
-      ctx.fillText(`SPEED ${(t.speed*FPS).toFixed(0)}  SHOT ${(t.weaponSpeed*FPS).toFixed(0)}`, x + cellW/2, 276);
+      ctx.fillStyle = t.color; ctx.font = `bold ${u*2.2}px monospace`;
+      ctx.fillText(t.key.toUpperCase(), x + cellW/2, py + portraitSize + u*2);
+
+      ctx.fillStyle = "#aaa"; ctx.font = `${u*1.4}px monospace`;
+      ctx.fillText(t.name, x + cellW/2, py + portraitSize + u*4);
+      ctx.fillText(`HP ${t.health}  ARM ${t.armor}  MAG ${t.magic}`, x + cellW/2, py + portraitSize + u*5.5);
+      ctx.fillText(`SPEED ${(t.speed*FPS).toFixed(0)}  SHOT ${(t.weaponSpeed*FPS).toFixed(0)}`, x + cellW/2, py + portraitSize + u*7);
 
       if (this.activeTypes[i] !== null) {
-        ctx.fillStyle = "#0c0"; ctx.font = "bold 12px monospace";
-        ctx.fillText("READY", x + cellW/2, 300);
+        ctx.fillStyle = "#0c0"; ctx.font = `bold ${u*2}px monospace`;
+        ctx.fillText("READY", x + cellW/2, py + portraitSize + u*9.5);
       } else {
-        ctx.fillStyle = "#777"; ctx.font = "10px monospace";
-        ctx.fillText("← →  to choose", x + cellW/2, 300);
-        ctx.fillText("SHOOT to lock in", x + cellW/2, 314);
+        ctx.fillStyle = "#777"; ctx.font = `${u*1.4}px monospace`;
+        ctx.fillText("← →  to choose", x + cellW/2, py + portraitSize + u*9);
+        ctx.fillText("SHOOT to lock in", x + cellW/2, py + portraitSize + u*10.4);
       }
     }
 
     ctx.fillStyle = anyLocked ? "#ffe66d" : "#555";
-    ctx.font = "bold 14px monospace"; ctx.textAlign = "center";
+    ctx.font = `bold ${u*2.4}px monospace`; ctx.textAlign = "center";
     ctx.fillText(anyLocked ? "Press ENTER to begin" : "At least one player must lock in",
-      this.canvas.width/2, this.canvas.height - 30);
+      W/2, H - u*3);
 
     const startPressed = this.input.pressed("Enter") || this.input.pressed("Space") || this.input.pressed("NumpadEnter");
     if (anyLocked && startPressed) {
@@ -243,36 +267,47 @@ export class Game {
       // place each joined player at a starting position
       let starts = this.level.starts.slice();
       if (starts.length === 0) starts = [{ x: TILE*2, y: TILE*2 }];
+      // If we have fewer starts than joined players, fan additional players
+      // out into nearby walkable cells so they don't all spawn stacked.
+      const offsets = [[0,0],[1,0],[0,1],[1,1],[-1,0],[0,-1],[-1,1],[1,-1]];
+      let spawnIdx = 0;
       for (let i = 0; i < this.players.length; i++) {
         const p = this.players[i];
         if (!p.joined) continue;
         p.level = this.level;
-        const s = starts[i % starts.length];
-        p.x = s.x; p.y = s.y;
+        const s = starts[Math.min(spawnIdx, starts.length - 1)];
+        const o = offsets[spawnIdx % offsets.length];
+        let nx = s.x + o[0] * TILE, ny = s.y + o[1] * TILE;
+        // If the candidate cell is a wall, fall back to the start.
+        const cell = this.level.cell(nx, ny);
+        if (!cell || cell.wall || cell.nothing) { nx = s.x; ny = s.y; }
+        p.x = nx; p.y = ny;
         p.exiting = null; p.dead = false;
         p.health = Math.max(p.health, p.type.health/2);
         this.level.occupy(p, p.x, p.y);
+        spawnIdx++;
       }
       this.sounds.music(meta.music, 0.4);
       this.sounds.say("Welcome to the Dungeon. The Adventure begins!", { cooldown: 30000 });
     }
 
-    // draw level briefly
     this._updateViewport();
     this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, meta.name);
-    // overlay fade-in
-    const a = Math.max(0, this._loadingTimer / (FPS * 1.5));
+    this.render.drawHud(this.players, this.level, meta.name, this.frame);
+
     const ctx = this.canvas.getContext("2d");
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60));
+    const a = Math.max(0, this._loadingTimer / (FPS * 1.5));
     ctx.fillStyle = `rgba(0,0,0,${a})`;
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillRect(this.render.layout.game.x, 0, this.render.layout.game.w, H);
     ctx.fillStyle = `rgba(255,220,80,${a})`;
-    ctx.font = "bold 22px monospace"; ctx.textAlign = "center";
-    ctx.fillText(meta.name, this.canvas.width/2, this.canvas.height/2);
+    ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
+    ctx.fillText(meta.name, this.render.layout.game.x + this.render.layout.game.w/2, H/2);
     if (meta.help) {
       ctx.fillStyle = `rgba(180,200,255,${a*0.9})`;
-      ctx.font = "12px monospace";
-      ctx.fillText(meta.help, this.canvas.width/2, this.canvas.height/2 + 24);
+      ctx.font = `${u*1.6}px monospace`;
+      ctx.fillText(meta.help, this.render.layout.game.x + this.render.layout.game.w/2, H/2 + u*4);
     }
     if (--this._loadingTimer <= 0) this.state = STATE.PLAYING;
   }
@@ -310,21 +345,23 @@ export class Game {
       return;
     }
 
-    // draw
     this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, LEVEL_META[this.levelIndex]?.name || "");
+    this.render.drawHud(this.players, this.level, LEVEL_META[this.levelIndex]?.name || "", this.frame);
   }
 
   _transition() {
     const ctx = this.canvas.getContext("2d");
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60));
     this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, "");
+    this.render.drawHud(this.players, this.level, "", this.frame);
     ctx.fillStyle = `rgba(0,0,0,${1 - this.transitionTimer/(FPS*2)})`;
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.fillStyle = "#fff8a0"; ctx.font = "bold 20px monospace"; ctx.textAlign = "center";
-    ctx.fillText("LEVEL CLEAR", this.canvas.width/2, this.canvas.height/2 - 4);
-    ctx.fillStyle = "#aaa"; ctx.font = "12px monospace";
-    ctx.fillText(`+${SCORE_PER_LEVEL * this.levelIndex} bonus`, this.canvas.width/2, this.canvas.height/2 + 18);
+    ctx.fillRect(this.render.layout.game.x, 0, this.render.layout.game.w, H);
+    ctx.fillStyle = "#fff8a0"; ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
+    ctx.fillText("LEVEL CLEAR", this.render.layout.game.x + this.render.layout.game.w/2, H/2 - u);
+    ctx.fillStyle = "#aaa"; ctx.font = `${u*2}px monospace`;
+    ctx.fillText(`+${SCORE_PER_LEVEL * this.levelIndex} bonus`,
+      this.render.layout.game.x + this.render.layout.game.w/2, H/2 + u*3);
     if (--this.transitionTimer <= 0) {
       this.level = null;
       this._enterLoading();
@@ -333,31 +370,40 @@ export class Game {
 
   _gameover() {
     const ctx = this.canvas.getContext("2d");
+    const W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(8, Math.floor(H / 60));
     if (this.level) {
       this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-      this.render.drawHud(this.players, this.level, "");
+      this.render.drawHud(this.players, this.level, "", this.frame);
     } else {
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     }
     ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.fillStyle = "#ff4040"; ctx.font = "bold 36px monospace"; ctx.textAlign = "center";
-    ctx.fillText("GAME OVER", this.canvas.width/2, this.canvas.height/2 - 16);
-    ctx.fillStyle = "#fff"; ctx.font = "14px monospace";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#ff4040"; ctx.font = `bold ${u*7}px monospace`; ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", W/2, H/2 - u*2);
+    ctx.fillStyle = "#fff"; ctx.font = `bold ${u*2.5}px monospace`;
     let topScore = 0, topName = "";
     for (const p of this.players) if (p.joined && p.score > topScore) { topScore = p.score; topName = p.type.key.toUpperCase(); }
-    ctx.fillText(`HIGH: ${topName} ${topScore}`, this.canvas.width/2, this.canvas.height/2 + 14);
-    ctx.fillStyle = "#888";
-    ctx.fillText("Press any key for title", this.canvas.width/2, this.canvas.height/2 + 38);
+    ctx.fillText(`HIGH: ${topName} ${topScore}`, W/2, H/2 + u*2);
+    ctx.fillStyle = "#888"; ctx.font = `${u*1.8}px monospace`;
+    ctx.fillText("Press any key for title", W/2, H/2 + u*5);
     if (--this.gameoverTimer <= 0 && this.input.anyPressed()) {
       this.level = null;
       this.state = STATE.TITLE;
     }
   }
 
+  _refreshViewportSize() {
+    // Game viewport size matches the renderer's centre column.
+    this.render.resize();
+    const g = this.render.layout.game;
+    this.viewport.w = g.w;
+    this.viewport.h = g.h;
+  }
+
   _updateViewport() {
     if (!this.level) return;
-    // camera follows centroid of joined alive players
     let cx = 0, cy = 0, n = 0;
     for (const p of this.players) {
       if (p.joined) { cx += p.x + TILE/2; cy += p.y + TILE/2; n++; }
@@ -366,7 +412,6 @@ export class Game {
     cx /= n; cy /= n;
     const targetX = cx - this.viewport.w/2;
     const targetY = cy - this.viewport.h/2;
-    // smooth follow
     this.viewport.x += (targetX - this.viewport.x) * 0.18;
     this.viewport.y += (targetY - this.viewport.y) * 0.18;
     this.viewport.x = Math.max(0, Math.min(this.level.w - this.viewport.w, this.viewport.x));

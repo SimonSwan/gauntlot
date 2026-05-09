@@ -1,12 +1,22 @@
-// Renderer: draws floor, walls, entities, HUD.
-// Uses original arcade sprites (24×24 frames laid out as cols=animFrames, rows=8 directions).
+// Arcade-faithful renderer.
+//
+// Canvas fills the window; we lay out three columns:
+//   [ left HUD column ] [ centre game viewport ] [ right HUD column ]
+//
+// Each HUD column shows two of the four player slots stacked vertically:
+//   left  = P1 Warrior (top) + P3 Wizard (bottom)
+//   right = P2 Valkyrie (top) + P4 Elf (bottom)
+// matching the original cabinet layout.
+//
+// The internal "world" tile size is a fixed 32px; the centre viewport just
+// shows however many tiles fit. We do *not* scale individual sprites — the
+// arcade look is one pixel = one pixel — but the total panel layout responds
+// to the window size.
+
 import { TILE, DIR, FPS } from "./constants.js";
 
-const SP = 24; // sprite frame size from MAME extracts (24x24)
+const SP = 24;
 
-// Map our entity sprites to images and frame layouts.
-// rows = 8 directions in MAME order: UP=0, UPRIGHT=1, RIGHT=2, DOWNRIGHT=3, DOWN=4, DOWNLEFT=5, LEFT=6, UPLEFT=7
-// cols = animation frames for that direction (varies per sheet)
 const PLAYER_SHEETS = {
   warrior:  { img: "warrior",  cols: 9, rows: 8 },
   valkyrie: { img: "valkyrie", cols: 9, rows: 8 },
@@ -18,11 +28,10 @@ const MONSTER_SHEETS = {
   grunt:    { img: "grunt",    cols: 5, rows: 8 },
   demon:    { img: "demon",    cols: 8, rows: 8 },
   sorcerer: { img: "sorcerer", cols: 6, rows: 8 },
-  lobber:   { img: "lobber",   cols: 5, rows: 4 }, // lobber sheet is 120x128, 4 dir rows
+  lobber:   { img: "lobber",   cols: 5, rows: 4 },
   death:    { img: "death",    cols: 3, rows: 8 },
   thief:    { img: "thief",    cols: 9, rows: 8 },
 };
-
 const TREASURE_IMG = {
   health: "potionBlue",
   poison: "potionOrange",
@@ -35,59 +44,78 @@ const TREASURE_IMG = {
   chest:  "treasureChest",
 };
 
+// Cabinet positions.
+//   slotPositions[slot] = { col: "left"|"right", half: "top"|"bottom" }
+const SLOT_POS = {
+  0: { col: "left",  half: "top"    }, // Warrior
+  1: { col: "right", half: "top"    }, // Valkyrie
+  2: { col: "left",  half: "bottom" }, // Wizard
+  3: { col: "right", half: "bottom" }, // Elf
+};
+
+const ARCADE_BG = "#000";
+const HUD_BG = "#000";
+const FONT = "monospace";
+
 export class Render {
   constructor(canvas, assets) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    this.ctx.imageSmoothingEnabled = false;
     this.assets = assets;
-    this.W = canvas.width;
-    this.H = canvas.height;
-    this.HUD_H = 64;
-    this.viewW = this.W;
-    this.viewH = this.H - this.HUD_H;
-    this._floorPattern = this._makeFloorPattern();
+    this.layout = this._computeLayout();
   }
 
-  _makeFloorPattern() {
-    // Procedural stone floor
-    const c = document.createElement("canvas");
-    c.width = TILE; c.height = TILE;
-    const g = c.getContext("2d");
-    g.fillStyle = "#1a1208";
-    g.fillRect(0, 0, TILE, TILE);
-    for (let i = 0; i < 16; i++) {
-      g.fillStyle = `rgba(${60 + (Math.random()*30|0)}, ${40 + (Math.random()*20|0)}, ${20 + (Math.random()*15|0)}, 0.5)`;
-      g.fillRect((Math.random()*TILE)|0, (Math.random()*TILE)|0, 2, 2);
-    }
-    g.strokeStyle = "rgba(0,0,0,0.4)";
-    g.strokeRect(0.5, 0.5, TILE-1, TILE-1);
-    return this.ctx.createPattern(c, "repeat");
+  _computeLayout() {
+    const W = this.canvas.width, H = this.canvas.height;
+
+    // Aim for a fixed-pixel HUD width that scales with window. The reference
+    // arcade cabinet has HUD ≈ 22% of total width per side; the centre game
+    // playfield is the rest. We snap the side panels to a multiple of 32 so
+    // sprites and text grids align cleanly.
+    const hudW = Math.max(180, Math.floor(W * 0.22));
+    const gameW = W - hudW * 2;
+    const gameH = H;
+
+    return {
+      W, H,
+      left:  { x: 0,            y: 0, w: hudW,  h: H },
+      right: { x: W - hudW,     y: 0, w: hudW,  h: H },
+      game:  { x: hudW,         y: 0, w: gameW, h: gameH },
+    };
   }
+
+  resize() { this.layout = this._computeLayout(); }
+
+  // --- World rendering -----------------------------------------------------
 
   drawWorld(level, viewport, frame, players) {
+    this.layout = this._computeLayout();
     const ctx = this.ctx;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, this.W, this.viewH);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = ARCADE_BG;
+    ctx.fillRect(0, 0, this.layout.W, this.layout.H);
 
-    // visible tile range
+    // Clip to game column.
+    ctx.save();
+    const g = this.layout.game;
+    ctx.beginPath(); ctx.rect(g.x, g.y, g.w, g.h); ctx.clip();
+    ctx.translate(g.x - viewport.x, g.y - viewport.y);
+
+    // Tiles visible.
     const tx0 = Math.max(0, Math.floor(viewport.x / TILE) - 1);
     const ty0 = Math.max(0, Math.floor(viewport.y / TILE) - 1);
-    const tx1 = Math.min(level.tw - 1, Math.ceil((viewport.x + this.viewW) / TILE) + 1);
-    const ty1 = Math.min(level.th - 1, Math.ceil((viewport.y + this.viewH) / TILE) + 1);
+    const tx1 = Math.min(level.tw - 1, Math.ceil((viewport.x + g.w) / TILE) + 1);
+    const ty1 = Math.min(level.th - 1, Math.ceil((viewport.y + g.h) / TILE) + 1);
 
-    // floors first
-    ctx.save();
-    ctx.translate(-viewport.x, -viewport.y);
-    ctx.fillStyle = this._floorPattern;
+    // Floors
     for (let ty = ty0; ty <= ty1; ty++) {
       for (let tx = tx0; tx <= tx1; tx++) {
         const c = level.cells[tx + ty * level.tw];
         if (!c || c.nothing || c.wall) continue;
-        ctx.fillRect(tx*TILE, ty*TILE, TILE, TILE);
+        this._drawFloor(ctx, tx*TILE, ty*TILE);
       }
     }
-    // walls
+    // Walls
     for (let ty = ty0; ty <= ty1; ty++) {
       for (let tx = tx0; tx <= tx1; tx++) {
         const c = level.cells[tx + ty * level.tw];
@@ -95,35 +123,53 @@ export class Render {
         this._drawWall(ctx, tx*TILE, ty*TILE, c.wallMask);
       }
     }
-    // entities sorted by y for cheap depth
+    // Entities (sorted by y for cheap depth)
     const ents = level.entities.slice().sort((a,b) => (a.y - b.y));
     for (const e of ents) this._drawEntity(ctx, e, frame, level);
-    // players on top
+    // Players
     for (const p of players) if (p.joined) this._drawPlayer(ctx, p, frame);
     ctx.restore();
+
+    // Border lines flanking the game viewport — arcade-style trim.
+    ctx.fillStyle = "#222";
+    ctx.fillRect(this.layout.left.x + this.layout.left.w - 2, 0, 2, this.layout.H);
+    ctx.fillRect(this.layout.right.x, 0, 2, this.layout.H);
+  }
+
+  // ROM-style tiled floor: dark earthy brown with a faint grid.
+  _drawFloor(ctx, x, y) {
+    ctx.fillStyle = "#26180a";
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = "#321e0b";
+    for (let i = 4; i < TILE; i += 8) ctx.fillRect(x + i, y, 1, TILE);
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(x, y + TILE - 1, TILE, 1);
+    ctx.fillRect(x + TILE - 1, y, 1, TILE);
   }
 
   _drawWall(ctx, x, y, mask) {
-    // mask: 1=N,2=E,4=S,8=W neighbours
-    ctx.fillStyle = "#3b3a78";
+    // Brown brick wall like the arcade. Solid base + bricked highlights.
+    ctx.fillStyle = "#4a2913";
     ctx.fillRect(x, y, TILE, TILE);
-    // brick lines
-    ctx.fillStyle = "#272464";
-    for (let i = 0; i < TILE; i += 8) ctx.fillRect(x, y + i, TILE, 1);
-    for (let j = 0; j < TILE; j += 16) {
-      const off = (j/16) % 2 ? 0 : 16;
-      for (let k = 0; k < TILE; k += 16) ctx.fillRect(x + ((k + off) % TILE), y + j, 1, 8);
+    ctx.fillStyle = "#642f12";
+    // Two rows of bricks per tile; offset every other row for staggered pattern.
+    for (let by = 0; by < TILE; by += 8) {
+      const off = ((y + by) / 8) % 2 ? 8 : 0;
+      for (let bx = 0; bx < TILE + 8; bx += 16) {
+        ctx.fillRect(x + ((bx + off) % TILE), y + by, 14, 7);
+      }
     }
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 1;
-    if (!(mask & 1)) { ctx.beginPath(); ctx.moveTo(x, y+0.5); ctx.lineTo(x+TILE, y+0.5); ctx.stroke(); }
-    if (!(mask & 8)) { ctx.beginPath(); ctx.moveTo(x+0.5, y); ctx.lineTo(x+0.5, y+TILE); ctx.stroke(); }
-    ctx.strokeStyle = "rgba(0,0,0,0.4)";
-    if (!(mask & 4)) { ctx.beginPath(); ctx.moveTo(x, y+TILE-0.5); ctx.lineTo(x+TILE, y+TILE-0.5); ctx.stroke(); }
-    if (!(mask & 2)) { ctx.beginPath(); ctx.moveTo(x+TILE-0.5, y); ctx.lineTo(x+TILE-0.5, y+TILE); ctx.stroke(); }
+    // Mortar lines.
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    for (let by = 7; by < TILE; by += 8) ctx.fillRect(x, y + by, TILE, 1);
+    // Top highlight (light source from above-left).
+    if (!(mask & 1)) { ctx.fillStyle = "rgba(255,200,140,0.22)"; ctx.fillRect(x, y, TILE, 1); }
+    if (!(mask & 8)) { ctx.fillStyle = "rgba(255,200,140,0.18)"; ctx.fillRect(x, y, 1, TILE); }
+    if (!(mask & 4)) { ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x, y + TILE - 1, TILE, 1); }
+    if (!(mask & 2)) { ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(x + TILE - 1, y, 1, TILE); }
   }
 
-  _drawEntity(ctx, e, frame, level) {
+  _drawEntity(ctx, e, frame) {
     if (e.dead) return;
     if (e.fx) return this._drawFx(ctx, e, frame);
     if (e.weapon) return this._drawWeapon(ctx, e, frame);
@@ -142,41 +188,38 @@ export class Render {
       ctx.fillStyle = "#ffe24a";
       ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
     } else {
-      const owner = e.owner;
-      const c = owner?.type?.color || "#fff";
+      const c = e.owner?.type?.color || "#fff";
       ctx.fillStyle = c;
       const t = (frame % 8) / 8;
-      const r = 3 + Math.sin(t*Math.PI*2)*2;
+      const r = 3 + Math.sin(t * Math.PI * 2) * 2;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
       ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI*2); ctx.fill();
     }
   }
 
-  _drawDoor(ctx, e, frame) {
-    const f = e.opening ? Math.min(0.95, 1 - e.opening/(e.type.openSpeed)) : 0;
+  _drawDoor(ctx, e) {
     ctx.fillStyle = "#caa54f";
     ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
     ctx.fillStyle = "#7a5b1f";
     for (let i = 4; i < TILE-4; i += 4) ctx.fillRect(e.x+i, e.y+4, 1, TILE-8);
-    if (f > 0) {
+    if (e.opening) {
+      const f = Math.min(0.95, 1 - e.opening/(e.type.openSpeed));
       ctx.fillStyle = `rgba(0,0,0,${f})`;
       ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
     }
   }
 
   _drawExit(ctx, e, frame) {
-    const t = (frame / 8) % 8 | 0;
     const img = this.assets.images.exit;
     if (img && img.naturalWidth) {
       ctx.drawImage(img, 0, 0, img.width, img.height, e.x, e.y, TILE, TILE);
     } else {
-      ctx.fillStyle = "#2a8";
+      ctx.fillStyle = "#1c8a4a";
       ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
     }
-    // pulsing glow
     const s = 0.5 + 0.5*Math.sin(frame * 0.2);
-    ctx.fillStyle = `rgba(60,200,140,${0.4*s})`;
+    ctx.fillStyle = `rgba(60,200,140,${0.35*s})`;
     ctx.fillRect(e.x, e.y, TILE, TILE);
   }
 
@@ -184,9 +227,8 @@ export class Render {
     const key = TREASURE_IMG[e.type.key];
     const img = this.assets.images[key];
     if (img && img.naturalWidth) {
-      // Most are 16x16; draw centered, scaled to TILE
       const sw = img.naturalWidth, sh = img.naturalHeight;
-      const fw = sw === 72 ? 24 : 16; // chest is sprite-sheet 72x24
+      const fw = sw === 72 ? 24 : 16;
       const fh = sh === 24 && sw > 24 ? 24 : Math.min(sh, 16);
       const f = (sw / fw) > 1 ? Math.floor(frame / 10) % Math.floor(sw / fw) : 0;
       ctx.drawImage(img, f*fw, 0, fw, fh, e.x, e.y, TILE, TILE);
@@ -199,10 +241,9 @@ export class Render {
   _drawMonster(ctx, e, frame) {
     const sheet = MONSTER_SHEETS[e.type.key];
     const img = sheet && this.assets.images[sheet.img];
-    // invisibility flicker (sorcerer)
     if (e.type.invisibility) {
       const phase = (frame + e.df) % (e.type.invisibility.on + e.type.invisibility.off);
-      if (phase < e.type.invisibility.on) return; // invisible
+      if (phase < e.type.invisibility.on) return;
     }
     if (img && img.naturalWidth) {
       const dirRow = Math.min(sheet.rows - 1, mapDirToRow(e.dir, sheet.rows));
@@ -212,7 +253,6 @@ export class Render {
       ctx.fillStyle = monsterColor(e.type.key);
       ctx.fillRect(e.x+4, e.y+4, TILE-8, TILE-8);
     }
-    // health bar when hurt
     if (e.health < e.type.health) {
       const w = (TILE-4) * (e.health / e.type.health);
       ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(e.x+2, e.y, TILE-4, 2);
@@ -225,13 +265,11 @@ export class Render {
     const img = this.assets.images[isGhost ? "ghostGen" : "monsterGen"];
     const stage = Math.max(0, 2 - Math.floor(3 * (e.health / (e.maxHealth + 1))));
     if (img && img.naturalWidth) {
-      // 72x24 sheet: 3 frames of 24x24
       ctx.drawImage(img, stage * SP, 0, SP, SP, e.x + (TILE-SP)/2, e.y + (TILE-SP)/2, SP, SP);
     } else {
       ctx.fillStyle = ["#822","#a44","#f66"][stage] || "#a44";
       ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
     }
-    // throbbing tint
     const s = 0.4 + 0.4*Math.sin(frame * 0.25);
     ctx.fillStyle = `rgba(255,80,40,${0.18 * s})`;
     ctx.fillRect(e.x, e.y, TILE, TILE);
@@ -254,7 +292,6 @@ export class Render {
     const sheet = PLAYER_SHEETS[p.type.key];
     const img = this.assets.images[sheet.img];
 
-    // glow when hurt/healed
     if (p.hurting > 0) {
       const a = 0.3 * (p.hurting / (FPS/2));
       ctx.fillStyle = `rgba(255,40,40,${a})`;
@@ -278,85 +315,167 @@ export class Render {
       ctx.fillRect(p.x+4, p.y+4, TILE-8, TILE-8);
     }
 
-    // player number tag
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(p.x + TILE - 10, p.y + TILE - 10, 9, 9);
+    // Player number tag
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(p.x + TILE - 11, p.y + TILE - 11, 10, 10);
     ctx.fillStyle = p.type.color;
-    ctx.font = "bold 8px monospace";
+    ctx.font = "bold 9px " + FONT;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(String(p.slot + 1), p.x + TILE - 5.5, p.y + TILE - 5);
+    ctx.fillText(String(p.slot + 1), p.x + TILE - 6, p.y + TILE - 5.5);
   }
 
-  // ----- HUD -----
-  drawHud(players, level, levelName) {
+  // --- HUD -----------------------------------------------------------------
+
+  drawHud(players, level, levelName, frame) {
     const ctx = this.ctx;
-    const y = this.viewH;
-    ctx.fillStyle = "#0a0a14";
-    ctx.fillRect(0, y, this.W, this.HUD_H);
-    ctx.fillStyle = "#222244";
-    ctx.fillRect(0, y, this.W, 2);
+    ctx.imageSmoothingEnabled = false;
+    const L = this.layout;
 
-    const cellW = Math.floor(this.W / 4);
-    for (let i = 0; i < 4; i++) {
-      const x = i * cellW;
-      const p = players[i];
-      this._drawHudCell(ctx, x + 4, y + 4, cellW - 8, this.HUD_H - 8, p, i);
+    // Black backgrounds for both side panels.
+    ctx.fillStyle = HUD_BG;
+    ctx.fillRect(L.left.x, 0, L.left.w, L.H);
+    ctx.fillRect(L.right.x, 0, L.right.w, L.H);
+
+    // Compute panel geometry: each side is split vertically into two halves.
+    // Logo occupies the very top of the right column (LEVEL N also rendered there).
+    const topReserve = Math.min(110, Math.max(60, Math.floor(L.H * 0.13)));
+    const cellH = Math.floor((L.H - topReserve) / 2);
+
+    // GAUNTLET logo top-right
+    this._drawLogo(ctx, L.right.x + 8, 8, L.right.w - 16, topReserve - 16);
+    // LEVEL banner top-left
+    this._drawLevelBanner(ctx, L.left.x + 8, 8, L.left.w - 16, topReserve - 16, levelName);
+
+    // Player panels by slot.
+    for (let slot = 0; slot < 4; slot++) {
+      const pos = SLOT_POS[slot];
+      const colSide = pos.col === "left" ? L.left : L.right;
+      const top = topReserve + (pos.half === "top" ? 0 : cellH);
+      this._drawPlayerPanel(ctx, players[slot], slot, colSide.x + 4, top + 4, colSide.w - 8, cellH - 8, frame);
     }
-    // top bar: level name
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, 0, this.W, 18);
-    ctx.fillStyle = "#fff8a0";
-    ctx.font = "bold 12px monospace";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(levelName || "", this.W/2, 9);
+
+    // Footer credits at bottom of right panel.
+    ctx.fillStyle = "#888";
+    ctx.font = `bold ${Math.max(9, Math.floor(L.H * 0.013))}px ${FONT}`;
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    ctx.fillText("©1985 ATARI GAMES", L.right.x + L.right.w - 8, L.H - 6);
+    ctx.textAlign = "left";
+    ctx.fillText("1 COIN = 700 HEALTH", L.left.x + 8, L.H - 6);
   }
 
-  _drawHudCell(ctx, x, y, w, h, p, slot) {
-    const t = p.type;
-    ctx.strokeStyle = p.joined ? t.color : "#333";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x+0.5, y+0.5, w-1, h-1);
-    ctx.fillStyle = p.joined ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)";
-    ctx.fillRect(x+1, y+1, w-2, h-2);
+  _drawLogo(ctx, x, y, w, h) {
+    const img = this.assets.images.textGauntlet;
+    if (img && img.naturalWidth) {
+      // Preserve aspect, fit inside the box.
+      const scale = Math.min(w / img.width, h / img.height);
+      const dw = img.width * scale, dh = img.height * scale;
+      const dx = x + (w - dw) / 2, dy = y + (h - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+    } else {
+      ctx.fillStyle = "#ffd24a";
+      ctx.font = `bold ${Math.floor(h * 0.7)}px ${FONT}`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("GAUNTLET", x + w/2, y + h/2);
+    }
+  }
 
-    // portrait
+  _drawLevelBanner(ctx, x, y, w, h, name) {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#444"; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.fillStyle = "#ffd24a";
+    ctx.font = `bold ${Math.floor(h * 0.42)}px ${FONT}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("LEVEL", x + w/2, y + h*0.3);
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.floor(h * 0.55)}px ${FONT}`;
+    const num = (name || "").match(/\d+/)?.[0] || "?";
+    ctx.fillText(num, x + w/2, y + h*0.7);
+  }
+
+  _drawPlayerPanel(ctx, p, slot, x, y, w, h, frame) {
+    const t = p.type;
+    // Subtle frame around the panel.
+    ctx.strokeStyle = p.joined ? t.color : "#333";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+
+    // Hero name in their colour, big.
+    const nameSize = Math.max(14, Math.floor(h * 0.13));
+    ctx.fillStyle = p.joined ? t.color : "#444";
+    ctx.font = `bold ${nameSize}px ${FONT}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText(t.key.toUpperCase(), x + w/2, y + 6);
+
+    // Lives count "Nx" — big, tucked top-left.
+    if (p.joined && (p.lives || 0) > 0) {
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${nameSize}px ${FONT}`;
+      ctx.textAlign = "left";
+      ctx.fillText(`${p.lives}x`, x + 8, y + 6);
+    }
+
+    // Big portrait of the hero, down-facing standing frame.
     const sheet = PLAYER_SHEETS[t.key];
     const img = this.assets.images[sheet.img];
+    const portraitTop = y + 6 + nameSize + 4;
+    const portraitMax = Math.min(w - 16, h * 0.30);
+    const portraitSize = Math.max(48, Math.floor(portraitMax / 24) * 24);
     if (img && img.naturalWidth) {
-      ctx.drawImage(img, 0, 4*SP, SP, SP, x+4, y+8, 32, 32);
+      ctx.drawImage(img, 0, 4*SP, SP, SP,
+        x + (w - portraitSize)/2, portraitTop, portraitSize, portraitSize);
     } else {
       ctx.fillStyle = t.color;
-      ctx.fillRect(x+4, y+8, 32, 32);
+      ctx.fillRect(x + (w - portraitSize)/2, portraitTop, portraitSize, portraitSize);
     }
 
-    ctx.fillStyle = p.joined ? "#fff" : "#666";
-    ctx.font = "bold 11px monospace";
-    ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.fillText(`P${slot+1} ${t.key.toUpperCase()}`, x+40, y+4);
-    ctx.font = "10px monospace";
+    // Score / Health labels.
+    const labelSize = Math.max(10, Math.floor(h * 0.07));
+    const valueSize = Math.max(14, Math.floor(h * 0.11));
+    let cy = portraitTop + portraitSize + 8;
+
     if (p.joined) {
-      ctx.fillStyle = "#aaa";
-      ctx.fillText(`SCORE  ${p.score}`, x+40, y+18);
-      ctx.fillStyle = p.health < 200 ? (Math.floor(performance.now()/250)%2 ? "#f33":"#fff") : "#aaffaa";
-      ctx.fillText(`HEALTH ${Math.floor(p.health)}`, x+40, y+30);
-      ctx.fillStyle = "#ffd";
-      ctx.fillText(`KEYS ${p.keys}  POT ${p.potions}`, x+40, y+42);
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${labelSize}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText("SCORE", x + w/2, cy);
+      cy += labelSize + 2;
+      ctx.font = `bold ${valueSize}px ${FONT}`;
+      ctx.fillText(String(Math.floor(p.score)).padStart(5, "0"), x + w/2, cy);
+      cy += valueSize + 8;
+
+      ctx.font = `bold ${labelSize}px ${FONT}`;
+      ctx.fillText("HEALTH", x + w/2, cy);
+      cy += labelSize + 2;
+      const weak = p.health < 200;
+      const blink = weak && (Math.floor(frame / 12) % 2 === 0);
+      ctx.fillStyle = weak ? (blink ? "#f33" : "#fff") : "#9f9";
+      ctx.font = `bold ${valueSize}px ${FONT}`;
+      ctx.fillText(String(Math.max(0, Math.floor(p.health))).padStart(5, "0"), x + w/2, cy);
+      cy += valueSize + 6;
+
+      // Keys + potions
+      ctx.fillStyle = "#ffd24a";
+      ctx.font = `bold ${labelSize}px ${FONT}`;
+      ctx.fillText(`KEY ${p.keys}   POT ${p.potions}`, x + w/2, cy);
     } else {
-      ctx.fillStyle = "#aaa";
-      ctx.fillText(`PRESS START`, x+40, y+22);
-      ctx.fillStyle = "#777";
-      const codes = ["WASD+G", "IJKL+;", "ARROWS+.", "NUMPAD"];
-      ctx.fillText(codes[slot], x+40, y+34);
+      ctx.fillStyle = "#666";
+      ctx.font = `bold ${labelSize+1}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText("PRESS", x + w/2, cy);
+      ctx.fillText("START", x + w/2, cy + labelSize + 4);
+      const bind = ["WASD + G", "IJKL + ;", "ARROWS + .", "NUMPAD"][slot];
+      ctx.fillStyle = "#444";
+      ctx.font = `${labelSize}px ${FONT}`;
+      ctx.fillText(bind, x + w/2, cy + (labelSize + 4) * 2 + 8);
     }
   }
 }
 
 function mapDirToRow(dir, rows) {
-  // Our DIR enum: UP=0, UPRIGHT=1, RIGHT=2, DOWNRIGHT=3, DOWN=4, DOWNLEFT=5, LEFT=6, UPLEFT=7
-  // Most arcade sheets use the same order. If a sheet only has 4 rows (lobber), map to cardinals.
   if (rows >= 8) return dir;
   if (rows === 4) {
-    // up=0, right=1, down=2, left=3
     if (dir === DIR.UP || dir === DIR.UPLEFT || dir === DIR.UPRIGHT) return 0;
     if (dir === DIR.RIGHT || dir === DIR.DOWNRIGHT) return 1;
     if (dir === DIR.DOWN || dir === DIR.DOWNLEFT) return 2;
@@ -364,7 +483,6 @@ function mapDirToRow(dir, rows) {
   }
   return 0;
 }
-
 function monsterColor(k) {
   return ({ ghost:"#9be0ff", grunt:"#7a5b34", demon:"#cc3a3a", sorcerer:"#a060c0", lobber:"#3a8050", death:"#000", thief:"#dd44dd" })[k] || "#888";
 }

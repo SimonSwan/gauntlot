@@ -24,6 +24,7 @@ export class Player {
     this.moveDir = -1;
     this.score = 0;
     this.health = type.health;
+    this.lives = 0; // shown in HUD as "Nx"; arcade-style each coin grants 700 health = 1 life
     this.keys = 0;
     this.potions = 0;
     this.reloading = 0;
