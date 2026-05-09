@@ -578,46 +578,66 @@ export class Render {
     this.fontLarge.draw(ctx, num, x + w/2 - totalW/2, y + Math.floor(h * 0.35), "#fff", digitScale);
   }
 
-  // One hero panel inside the right HUD column. ROM-font everywhere.
-  //   WARRIOR              (big colored name; Nx on the left when ≥1)
-  //   SCORE  HEALTH        (small same-color labels)
-  //    3540   2634         (numeric values)
+  // One hero panel inside the right HUD column. ROM-font everywhere, sized
+  // to track the cabinet's own proportions: a chunky 2x hero name, then a
+  // small SCORE / HEALTH label row, then a slightly larger numeric value row.
+  // Inactive panels keep the hero colour but at half alpha (so the column
+  // still reads "WARRIOR / VALKYRIE / WIZARD / ELF" before anyone joins),
+  // matching the cabinet's idle attract loop.
   _drawHeroPanel(ctx, p, slot, x, y, w, h, frame) {
     const t = p.type;
-    const nameScale  = Math.max(2, Math.floor(h / 36));
-    const labelScale = Math.max(1, Math.floor(h / 56));
-    const valueScale = Math.max(1, Math.floor(h / 40));
-    const padX = Math.max(8, Math.floor(w * 0.06));
+    // Fixed integer scales — h-driven scaling was producing labelScale=2,
+    // which collided "SCORE" + "HEALTH" into "SCORBEALTH" in narrow columns.
+    const nameScale  = 2;
+    const labelScale = 1;
+    const valueScale = 2;
 
-    const nameY  = y + Math.floor(h * 0.08);
-    const labelY = y + Math.floor(h * 0.50);
-    const valueY = y + Math.floor(h * 0.72);
+    const nameY  = y + Math.floor(h * 0.06);
+    const labelY = y + Math.floor(h * 0.40);
+    const valueY = y + Math.floor(h * 0.62);
+    const padX = Math.max(6, Math.floor(w * 0.04));
 
-    const nameColor = p.joined ? t.color : "#3a3a3a";
+    // Hero colour, dimmed for unjoined slots (still readable, still in palette).
+    const colorBright = t.color;
+    const colorDim    = dimColor(t.color, 0.45);
+    const nameColor = p.joined ? colorBright : colorDim;
 
     // Hero name centred at the top of the panel.
     this.fontSmall.drawCentered(ctx, t.key.toUpperCase(), x + w/2, nameY, nameColor, nameScale);
 
-    // Nx lives badge top-left.
+    // Nx lives badge top-left (only when joined and ≥1 life shown).
     if (p.joined && (p.lives || 0) >= 1) {
       this.fontSmall.draw(ctx, `${p.lives}X`, x + padX, nameY, "#fff", nameScale);
     }
 
-    // SCORE / HEALTH labels in two columns.
-    const cx1 = x + Math.floor(w * 0.30);
-    const cx2 = x + Math.floor(w * 0.70);
+    // SCORE / HEALTH labels in two columns. Calculate cx positions from the
+    // ACTUAL label widths to guarantee no overlap regardless of column size.
+    const scoreW  = this.fontSmall.measure("SCORE", labelScale);
+    const healthW = this.fontSmall.measure("HEALTH", labelScale);
+    const valW    = this.fontSmall.measure("0000", valueScale);
+    // Align on a single grid: SCORE / value go in the left column, HEALTH /
+    // value in the right. Use the larger of (labelW, valueW) for spacing.
+    const colW = Math.max(scoreW, healthW, valW);
+    const gap  = Math.max(8, Math.floor(w * 0.04));
+    const totalW = colW * 2 + gap;
+    const leftX  = x + Math.floor((w - totalW) / 2);
+    const cx1 = leftX + colW / 2;
+    const cx2 = leftX + colW + gap + colW / 2;
+
     this.fontSmall.drawCentered(ctx, "SCORE",  cx1, labelY, nameColor, labelScale);
     this.fontSmall.drawCentered(ctx, "HEALTH", cx2, labelY, nameColor, labelScale);
 
     if (p.joined) {
-      this.fontSmall.drawCentered(ctx, this._fmtNum(p.score, 4),               cx1, valueY, "#fff", valueScale);
+      this.fontSmall.drawCentered(ctx, this._fmtNum(p.score, 4), cx1, valueY, "#fff", valueScale);
       const weak = p.health < 200;
       const blink = weak && (Math.floor(frame / 12) % 2 === 0);
       const hpColor = weak ? (blink ? "#F90503" : "#fff") : "#fff";
       this.fontSmall.drawCentered(ctx, this._fmtNum(Math.max(0, p.health), 4), cx2, valueY, hpColor, valueScale);
     } else {
-      this.fontSmall.drawCentered(ctx, "----", cx1, valueY, "#444", valueScale);
-      this.fontSmall.drawCentered(ctx, "----", cx2, valueY, "#444", valueScale);
+      // Inactive: small hero-coloured dashes as placeholders — same as the
+      // cabinet attract loop.
+      this.fontSmall.drawCentered(ctx, "----", cx1, valueY, colorDim, valueScale);
+      this.fontSmall.drawCentered(ctx, "----", cx2, valueY, colorDim, valueScale);
     }
   }
 
@@ -626,7 +646,14 @@ export class Render {
   }
 }
 
-// "#RGB", "#RRGGBB", or rgb()/named — return [r,g,b] 0-255.
+// Dim a hex/rgb color toward black by `factor` (0..1, where 0 is black).
+function dimColor(c, factor) {
+  const [r, g, b] = parseColor(c);
+  const f = Math.max(0, Math.min(1, factor));
+  return `#${[r, g, b].map(v => Math.floor(v * f).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// "#RGB", "#RRGGBB" — return [r,g,b] 0-255.
 function parseColor(c) {
   if (typeof c !== "string") return [255, 255, 255];
   if (c[0] === "#") {
@@ -635,14 +662,7 @@ function parseColor(c) {
     }
     return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
   }
-  // Use a temp element to resolve named colors via the browser.
-  const t = parseColor._tmp || (parseColor._tmp = document.createElement("div"));
-  t.style.color = c;
-  document.body.appendChild(t);
-  const cs = getComputedStyle(t).color;
-  document.body.removeChild(t);
-  const m = cs.match(/\d+/g);
-  return m ? [+m[0], +m[1], +m[2]] : [255, 255, 255];
+  return [255, 255, 255];
 }
 
 function mapDirToRow(dir, rows) {
