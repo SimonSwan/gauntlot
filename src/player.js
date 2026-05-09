@@ -110,7 +110,8 @@ export class Player {
         };
         const w = new Weapon(this.x, this.y, wt, this.dir, this);
         level.add(w);
-        level.game?.sounds.play(`fire${this.type.key}`, 0.3);
+        // Per-hero weapon SFX — falls back to firewarrior if unspecified.
+        level.game?.sounds.play(this.type.weaponSound || "firewarrior", 0.3);
       }
       return; // can't move while firing in arcade Gauntlet
     }
@@ -192,7 +193,9 @@ export class Player {
       const t = performance.now();
       if (t - this.lastWeakAnnounce > 8000) {
         this.lastWeakAnnounce = t;
-        this.level?.game?.sounds.say(`${this.type.name.split(" ")[0]} needs food, badly!`, { cooldown: 8000 });
+        // "Marine needs ammo, badly!" — Nostromo flavour of the iconic
+        // Gauntlet weak-health voice cue.
+        this.level?.game?.sounds.say(`${this.type.key} needs ammo, badly!`, { cooldown: 8000 });
       }
     }
   }
@@ -208,7 +211,7 @@ export class Player {
     // Release cell occupancy so monsters don't pile up on the corpse tile.
     this.level?._removeFromCells(this);
     this.level?.game?.sounds.play("gameover", 0.5);
-    this.level?.game?.sounds.say(`${this.type.name.split(" ")[0]} is about to die!`, { cooldown: 4000 });
+    this.level?.game?.sounds.say(`Crewman ${this.type.key} is down!`, { cooldown: 4000 });
   }
 }
 

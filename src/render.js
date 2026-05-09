@@ -205,31 +205,35 @@ class BitmapFont {
 
 const SP = 24;
 
+// Nostromo sprite sheets — 9-frame heroes / 4-frame monsters at 24×24,
+// matching the Gauntlet renderer's frame layout so the same animation
+// math drives both themes.
 const PLAYER_SHEETS = {
-  warrior:  { img: "warrior",  cols: 9, rows: 8 },
-  valkyrie: { img: "valkyrie", cols: 9, rows: 8 },
-  wizard:   { img: "wizard",   cols: 9, rows: 8 },
-  elf:      { img: "elf",      cols: 9, rows: 8 },
+  marine:    { img: "marine",    cols: 9, rows: 8 },
+  tech:      { img: "tech",      cols: 9, rows: 8 },
+  smuggler:  { img: "smuggler",  cols: 9, rows: 8 },
+  synthetic: { img: "synthetic", cols: 9, rows: 8 },
 };
 const MONSTER_SHEETS = {
-  ghost:    { img: "ghost",    cols: 4, rows: 8 },
-  grunt:    { img: "grunt",    cols: 5, rows: 8 },
-  demon:    { img: "demon",    cols: 8, rows: 8 },
-  sorcerer: { img: "sorcerer", cols: 6, rows: 8 },
-  lobber:   { img: "lobber",   cols: 5, rows: 4 },
-  death:    { img: "death",    cols: 3, rows: 8 },
-  thief:    { img: "thief",    cols: 9, rows: 8 },
+  drone:          { img: "drone",          cols: 4, rows: 8 },
+  spitter:        { img: "spitter",        cols: 4, rows: 8 },
+  runner:         { img: "runner",         cols: 4, rows: 8 },
+  praetorian:     { img: "praetorian",     cols: 4, rows: 8 },
+  protoXeno:      { img: "protoXeno",      cols: 4, rows: 8 },
+  synthSecurity:  { img: "synthSecurity",  cols: 4, rows: 8 },
+  workerAndroid:  { img: "workerAndroid",  cols: 4, rows: 8 },
 };
+// Treasure key (from constants) → image asset key.
 const TREASURE_IMG = {
-  health: "potionBlue",
-  poison: "potionOrange",
-  food1:  "foodTurkey",
-  food2:  "foodHam",
-  food3:  "foodJug",
-  key:    "key",
-  potion: "potionWeapon",
-  gold:   "treasureBag",
-  chest:  "treasureChest",
+  medkit:     "medkit",
+  ammo:       "ammo",
+  oxygen:     "oxygen",
+  adrenaline: "adrenaline",
+  accessCard: "accessCard",
+  emp:        "emp",
+  credits:    "credits",
+  dataCore:   "dataCore",
+  poison:     "poison",
 };
 
 // In the reference cabinet screenshot the four heroes stack top-to-bottom in
@@ -514,8 +518,10 @@ export class Render {
   }
 
   _drawGenerator(ctx, e, frame) {
-    const isGhost = e.mtype.key === "ghost";
-    const img = this.assets.images[isGhost ? "ghostGen" : "monsterGen"];
+    // "drone" generator → egg-cluster (ghostGen sprite); other monster
+    // generators → hive node / synthetic fabricator (monsterGen sprite).
+    const isEggCluster = e.mtype.key === "drone";
+    const img = this.assets.images[isEggCluster ? "ghostGen" : "monsterGen"];
     const stage = Math.max(0, 2 - Math.floor(3 * (e.health / (e.maxHealth + 1))));
     if (img && img.naturalWidth) {
       ctx.drawImage(img, stage * SP, 0, SP, SP, e.x + (TILE-SP)/2, e.y + (TILE-SP)/2, SP, SP);
@@ -635,11 +641,12 @@ export class Render {
       this._drawHeroBlock(ctx, players[slot], px, blockY, nW, K, frame);
     }
 
-    // Footer at the bottom of the panel. Centre via measured widths.
-    const yearW  = this.fontSmall.measure("1985",        1);
-    const atariW = this.fontSmall.measure("ATARI GAMES", 1);
-    this.fontSmall.draw(ctx, "1985",        sx((nW - yearW)  / 2), sy(220), "#fff", K);
-    this.fontSmall.draw(ctx, "ATARI GAMES", sx((nW - atariW) / 2), sy(228), "#fff", K);
+    // Footer trim — Weyland-Yutani branding for the Nostromo theme.
+    // Two short lines fit cleanly in the 96-px panel without overflow.
+    const yearW = this.fontSmall.measure("WEYLAND", 1);
+    const corpW = this.fontSmall.measure("YUTANI",  1);
+    this.fontSmall.draw(ctx, "WEYLAND", sx((nW - yearW) / 2), sy(220), "#fff", K);
+    this.fontSmall.draw(ctx, "YUTANI",  sx((nW - corpW) / 2), sy(228), "#fff", K);
   }
 
   // Draw a single 24-native-tall hero block at the given native Y.
@@ -698,20 +705,23 @@ export class Render {
   }
 
   _drawSidebarLogo(ctx, x, y, w, h) {
-    const img = this.assets.images.textGauntletSide || this.assets.images.textGauntlet;
-    if (!img || !img.naturalWidth) return;
-    // Measure the logo's actual content bbox so we don't render past the
-    // panel edge. The sidebar PNG has some transparent padding around the
-    // letterforms; we want to draw exactly the painted pixels into the
-    // available slot.
-    const bbox = this._logoBbox(img);
-    const srcX = bbox.x, srcY = bbox.y, srcW = bbox.w, srcH = bbox.h;
-    const scale = Math.min(w / srcW, h / srcH);
-    const dw = Math.floor(srcW * scale), dh = Math.floor(srcH * scale);
-    const dx = x + Math.floor((w - dw) / 2), dy = y + Math.floor((h - dh) / 2);
-    // Red drop-shadow underlay, then the original logo on top.
-    this._drawTintedRegion(ctx, img, srcX, srcY, srcW, srcH, dx + 1, dy + 1, dw, dh, "#9a0a0a");
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
+    // NOSTROMO wordmark rendered with the ROM bitmap font + a red shadow
+    // underlay. We size it to fill the panel slot.
+    const text = "NOSTROMO";
+    // Pick the largest scale that lets the wordmark fit in `w`.
+    let scale = 1;
+    for (let s = 8; s >= 1; s--) {
+      if (this.fontSmall.measure(text, s) <= w - 4) { scale = s; break; }
+    }
+    const tw = this.fontSmall.measure(text, scale);
+    const th = 8 * scale;
+    const dx = x + Math.floor((w - tw) / 2);
+    const dy = y + Math.floor((h - th) / 2);
+    this.fontSmall.draw(ctx, text, dx + scale, dy + scale, "#9a0a0a", scale);
+    this.fontSmall.draw(ctx, text, dx,         dy,         "#FFFFFF", scale);
+    // Underline trim.
+    ctx.fillStyle = "#9a0a0a";
+    ctx.fillRect(dx, dy + th + 1, tw, 1 * scale);
   }
 
   // Cache the logo content bbox after first measurement.
@@ -814,5 +824,13 @@ function mapDirToRow(dir, rows) {
   return 0;
 }
 function monsterColor(k) {
-  return ({ ghost:"#9be0ff", grunt:"#7a5b34", demon:"#cc3a3a", sorcerer:"#a060c0", lobber:"#3a8050", death:"#000", thief:"#dd44dd" })[k] || "#888";
+  return ({
+    drone:          "#3a4a5a",
+    spitter:        "#cc6a3a",
+    runner:         "#a07a4a",
+    synthSecurity:  "#a0a0a0",
+    praetorian:     "#3a8050",
+    protoXeno:      "#000000",
+    workerAndroid:  "#dac060",
+  })[k] || "#888";
 }

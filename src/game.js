@@ -29,11 +29,11 @@ const LEVEL_META = [
     const src = `maze${String(n).padStart(3, "0")}`;
     return {
       src,
-      name: `Dungeon ${n}`,
+      name: `Deck ${n}`,
       wall:  WALL_CYCLE[i % WALL_CYCLE.length],
       floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
       music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
-      help: i === 0 ? "Welcome to the Dungeon!" : null,
+      help: i === 0 ? "Boarding the derelict. Watch your six." : null,
     };
   }),
 ];
@@ -52,10 +52,10 @@ export class Game {
     this.state = STATE.BOOT;
     this.frame = 0;
     this.players = [
-      new Player(0, PLAYER_TYPES.WARRIOR),
-      new Player(1, PLAYER_TYPES.VALKYRIE),
-      new Player(2, PLAYER_TYPES.WIZARD),
-      new Player(3, PLAYER_TYPES.ELF),
+      new Player(0, PLAYER_TYPES.MARINE),
+      new Player(1, PLAYER_TYPES.TECH),
+      new Player(2, PLAYER_TYPES.SMUGGLER),
+      new Player(3, PLAYER_TYPES.SYNTHETIC),
     ];
     this.activeTypes = [null, null, null, null]; // chosen type indices per slot during select
 
@@ -119,16 +119,21 @@ export class Game {
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
 
-    // Big arcade GAUNTLET logo, snapped to integer pixel scale.
-    const img = this.assets.images.textGauntlet;
-    if (img && img.naturalWidth) {
-      const scale = Math.max(2, Math.floor(W * 0.5 / img.width));
-      const dw = img.width * scale, dh = img.height * scale;
-      ctx.drawImage(img, Math.floor((W - dw)/2), Math.floor(H * 0.18), dw, dh);
-    } else {
-      ctx.fillStyle = "#ffd24a"; ctx.font = `bold ${u*8}px monospace`; ctx.textAlign = "center";
-      ctx.fillText("GAUNTLET", W/2, H * 0.25);
-    }
+    // NOSTROMO wordmark — drawn through the ROM bitmap font with a red
+    // shadow underlay, snapped to an integer scale picked from the window.
+    const fontSmall = this.render.fontSmall;
+    const titleText = "NOSTROMO";
+    const titleScale = Math.max(4, Math.floor(W * 0.6 / fontSmall.measure(titleText, 1)));
+    const tw = fontSmall.measure(titleText, titleScale);
+    const tx = Math.floor((W - tw) / 2);
+    const ty = Math.floor(H * 0.18);
+    fontSmall.draw(ctx, titleText, tx + titleScale, ty + titleScale, "#9a0a0a", titleScale);
+    fontSmall.draw(ctx, titleText, tx,              ty,              "#FFFFFF", titleScale);
+    // Subtitle
+    const subtitle = "ALIENS - DERELICT VESSEL";
+    const subScale = Math.max(2, Math.floor(titleScale / 3));
+    const sw = fontSmall.measure(subtitle, subScale);
+    fontSmall.draw(ctx, subtitle, Math.floor((W - sw) / 2), ty + 8 * titleScale + 12, "#FFB000", subScale);
 
     // Four hero standing portraits across the middle.
     const portraitSize = Math.max(96, Math.floor(H * 0.18 / 24) * 24);
@@ -159,7 +164,7 @@ export class Game {
     ctx.fillText("P1 WASD+G/H    P2 IJKL+;/'    P3 ARROWS+./,    P4 NUMPAD",
       W/2, Math.floor(H * 0.92));
     ctx.fillStyle = "#444";
-    ctx.fillText("©1985 ATARI GAMES", W/2, Math.floor(H * 0.96));
+    ctx.fillText("WEYLAND-YUTANI CORP. CRYO ENTERTAINMENT DIVISION", W/2, Math.floor(H * 0.96));
 
     if (this.input.anyPressed()) {
       this.sounds.music("music_lostcorridors", 0.4);
@@ -305,7 +310,7 @@ export class Game {
         spawnIdx++;
       }
       this.sounds.music(meta.music, 0.4);
-      this.sounds.say("Welcome to the Dungeon. The Adventure begins!", { cooldown: 30000 });
+      this.sounds.say("Stay frosty. Hostiles inbound.", { cooldown: 30000 });
     }
 
     this._updateViewport();
