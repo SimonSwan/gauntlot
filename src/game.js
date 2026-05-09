@@ -395,11 +395,11 @@ export class Game {
   }
 
   _refreshViewportSize() {
-    // Game viewport size matches the renderer's centre column.
+    // Camera viewport sees `worldW × worldH` of world pixels (the renderer
+    // scales them up to fill the centre column).
     this.render.resize();
-    const g = this.render.layout.game;
-    this.viewport.w = g.w;
-    this.viewport.h = g.h;
+    this.viewport.w = this.render.layout.worldW;
+    this.viewport.h = this.render.layout.worldH;
   }
 
   _updateViewport() {

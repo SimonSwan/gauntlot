@@ -46,12 +46,12 @@ export function isHorizontal(d) { return d === DIR.LEFT || d === DIR.RIGHT; }
 export function isVertical(d)   { return d === DIR.UP || d === DIR.DOWN; }
 export function isDiagonal(d)   { return d === DIR.UPLEFT || d === DIR.UPRIGHT || d === DIR.DOWNLEFT || d === DIR.DOWNRIGHT; }
 
-// Hero archetypes — same balance as javascript-gauntlet (close to arcade)
+// Hero archetypes — Atari arcade tuning + canonical cabinet colours.
 export const PLAYER_TYPES = {
-  WARRIOR:  { key:"warrior",  name:"Thor the Warrior",     color:"#c1232a", health: 700, speed: 200/FPS, damage: 50/FPS, armor: 3, magic: 16, weaponSpeed: 600/FPS, reload: 0.40*FPS, weaponDamage: 4, weaponRotate: true,  voice:"male"   },
-  VALKYRIE: { key:"valkyrie", name:"Thyra the Valkyrie",   color:"#3a86c8", health: 600, speed: 220/FPS, damage: 40/FPS, armor: 2, magic: 16, weaponSpeed: 620/FPS, reload: 0.35*FPS, weaponDamage: 4, weaponRotate: false, voice:"female" },
-  WIZARD:   { key:"wizard",   name:"Merlin the Wizard",    color:"#f6c12d", health: 500, speed: 240/FPS, damage: 30/FPS, armor: 1, magic: 32, weaponSpeed: 640/FPS, reload: 0.30*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
-  ELF:      { key:"elf",      name:"Questor the Elf",      color:"#6dbf3c", health: 500, speed: 260/FPS, damage: 20/FPS, armor: 1, magic: 24, weaponSpeed: 660/FPS, reload: 0.25*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
+  WARRIOR:  { key:"warrior",  name:"Thor the Warrior",     color:"#F90503", health: 700, speed: 200/FPS, damage: 50/FPS, armor: 3, magic: 16, weaponSpeed: 600/FPS, reload: 0.40*FPS, weaponDamage: 4, weaponRotate: true,  voice:"male"   },
+  VALKYRIE: { key:"valkyrie", name:"Thyra the Valkyrie",   color:"#08B4F0", health: 600, speed: 220/FPS, damage: 40/FPS, armor: 2, magic: 16, weaponSpeed: 620/FPS, reload: 0.35*FPS, weaponDamage: 4, weaponRotate: false, voice:"female" },
+  WIZARD:   { key:"wizard",   name:"Merlin the Wizard",    color:"#F5FC00", health: 500, speed: 240/FPS, damage: 30/FPS, armor: 1, magic: 32, weaponSpeed: 640/FPS, reload: 0.30*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
+  ELF:      { key:"elf",      name:"Questor the Elf",      color:"#00FF03", health: 500, speed: 260/FPS, damage: 20/FPS, armor: 1, magic: 24, weaponSpeed: 660/FPS, reload: 0.25*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
 };
 export const PLAYER_LIST = ["WARRIOR","VALKYRIE","WIZARD","ELF"];
 
