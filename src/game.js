@@ -21,22 +21,33 @@ const FLOOR_CYCLE = [FLOOR.LIGHT_STONE, FLOOR.WOOD,      FLOOR.DARK_STONE,  FLOO
 const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
                      "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
 
-const LEVEL_META = [
-  // Original Gauntlet 1 ROM mazes (extracted from the user's MAME ROM via gex
-  // and converted to our PNG-encoded level format).
-  ...Array.from({ length: 100 }, (_, i) => {
-    const n = i + 1;
-    const src = `maze${String(n).padStart(3, "0")}`;
-    return {
-      src,
-      name: `Deck ${n}`,
-      wall:  WALL_CYCLE[i % WALL_CYCLE.length],
-      floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
-      music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
-      help: i === 0 ? "Boarding the derelict. Watch your six." : null,
-    };
-  }),
+// 17 hand-crafted Gauntlet levels (7 trainers + 10 dungeons), reskinned as
+// derelict-vessel decks for the Nostromo theme.
+const LEVEL_SOURCES = [
+  { src: "trainer1", name: "Airlock 01", help: "Boarding the derelict. Watch your six." },
+  { src: "trainer2", name: "Airlock 02", help: "Use SHOOT to engage hostiles at range." },
+  { src: "trainer3", name: "Airlock 03", help: "Doors need an access card." },
+  { src: "trainer4", name: "Airlock 04", help: "Generators keep spawning. Destroy them." },
+  { src: "trainer5", name: "Airlock 05", help: "Pickups regenerate health and ammo." },
+  { src: "trainer6", name: "Airlock 06", help: "EMP charge clears a room. Use sparingly." },
+  { src: "trainer7", name: "Airlock 07", help: "Find the exit hatch to advance." },
+  { src: "level1",   name: "Deck 01 — Cargo Hold",     help: null },
+  { src: "level2",   name: "Deck 02 — Engineering",    help: null },
+  { src: "level3",   name: "Deck 03 — Crew Quarters",  help: null },
+  { src: "level4",   name: "Deck 04 — Reactor Core",   help: null },
+  { src: "level5",   name: "Deck 05 — Hydroponics",    help: null },
+  { src: "level6",   name: "Deck 06 — Med Bay",        help: null },
+  { src: "level7",   name: "Deck 07 — Bridge",         help: null },
+  { src: "level8",   name: "Deck 08 — Hive",           help: null },
+  { src: "level9",   name: "Deck 09 — Synth Foundry",  help: null },
+  { src: "level10",  name: "Deck 10 — Escape Pod",     help: null },
 ];
+const LEVEL_META = LEVEL_SOURCES.map((meta, i) => ({
+  ...meta,
+  wall:  WALL_CYCLE[i % WALL_CYCLE.length],
+  floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
+  music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
+}));
 
 const STATE = { BOOT: "boot", TITLE: "title", SELECT: "select", LOADING: "loading", PLAYING: "playing", TRANSITION: "transition", GAMEOVER: "gameover" };
 
