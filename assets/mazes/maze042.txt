@@ -1,0 +1,7 @@
+Maze number: 42
+Loading maze from addr: 03aa83
+  Encoded length: 251 bytes
+  Wall pattern: 00, Wall color: 05     Floor pattern: 03, Floor color: 01
+  Flags: SHOTS_HURT 
+  Random food adds: 0
+  Secret trick:  0 - No trick

@@ -1,0 +1,7 @@
+Maze number: 77
+Loading maze from addr: 03c107
+  Encoded length: 224 bytes
+  Wall pattern: 00, Wall color: 03     Floor pattern: 02, Floor color: 02
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

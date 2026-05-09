@@ -1,0 +1,7 @@
+Maze number: 80
+Loading maze from addr: 03c381
+  Encoded length: 311 bytes
+  Wall pattern: 03, Wall color: 06     Floor pattern: 05, Floor color: 07
+  Flags: WRAP_H EXIT_CHOOSE_ONE TRAPS_RANDOM 
+  Random food adds: 0
+  Secret trick:  0 - No trick

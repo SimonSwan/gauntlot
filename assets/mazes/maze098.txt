@@ -1,0 +1,7 @@
+Maze number: 98
+Loading maze from addr: 03f228
+  Encoded length: 205 bytes
+  Wall pattern: 03, Wall color: 11     Floor pattern: 03, Floor color: 13
+  Flags: TRAPS_RANDOM WRAP_H 
+  Random food adds: 0
+  Secret trick:  0 - No trick

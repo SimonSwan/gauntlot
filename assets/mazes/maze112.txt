@@ -1,0 +1,7 @@
+Maze number: 112
+Loading maze from addr: 03d865
+  Encoded length: 165 bytes
+  Wall pattern: 03, Wall color: 00     Floor pattern: 03, Floor color: 00
+  Flags: EXIT_CHOOSE_ONE 
+  Random food adds: 0
+  Secret trick:  0 - No trick

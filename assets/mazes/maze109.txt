@@ -1,0 +1,7 @@
+Maze number: 109
+Loading maze from addr: 03d635
+  Encoded length: 206 bytes
+  Wall pattern: 04, Wall color: 00     Floor pattern: 06, Floor color: 15
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

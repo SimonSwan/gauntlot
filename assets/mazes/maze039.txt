@@ -1,0 +1,7 @@
+Maze number: 39
+Loading maze from addr: 03a73e
+  Encoded length: 369 bytes
+  Wall pattern: 00, Wall color: 14     Floor pattern: 05, Floor color: 05
+  Flags: WRAP_H TRAPS_RANDOM 
+  Random food adds: 0
+  Secret trick:  0 - No trick

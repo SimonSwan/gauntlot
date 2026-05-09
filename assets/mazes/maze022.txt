@@ -1,0 +1,7 @@
+Maze number: 22
+Loading maze from addr: 0397e6
+  Encoded length: 202 bytes
+  Wall pattern: 02, Wall color: 00     Floor pattern: 00, Floor color: 01
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

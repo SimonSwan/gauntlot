@@ -1,0 +1,7 @@
+Maze number: 105
+Loading maze from addr: 03d2ff
+  Encoded length: 191 bytes
+  Wall pattern: 00, Wall color: 07     Floor pattern: 01, Floor color: 05
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

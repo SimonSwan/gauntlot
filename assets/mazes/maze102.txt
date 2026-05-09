@@ -1,0 +1,7 @@
+Maze number: 102
+Loading maze from addr: 03d054
+  Encoded length: 188 bytes
+  Wall pattern: 01, Wall color: 03     Floor pattern: 07, Floor color: 05
+  Flags: SHOTS_STUN 
+  Random food adds: 0
+  Secret trick:  0 - No trick

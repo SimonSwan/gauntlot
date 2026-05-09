@@ -1,0 +1,7 @@
+Maze number: 74
+Loading maze from addr: 03e8bb
+  Encoded length: 332 bytes
+  Wall pattern: 02, Wall color: 09     Floor pattern: 05, Floor color: 01
+  Flags: TRAPS_RANDOM WRAP_H 
+  Random food adds: 0
+  Secret trick:  0 - No trick

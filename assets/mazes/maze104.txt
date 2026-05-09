@@ -1,0 +1,7 @@
+Maze number: 104
+Loading maze from addr: 03d202
+  Encoded length: 253 bytes
+  Wall pattern: 00, Wall color: 10     Floor pattern: 03, Floor color: 00
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

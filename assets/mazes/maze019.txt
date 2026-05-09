@@ -1,0 +1,7 @@
+Maze number: 19
+Loading maze from addr: 039423
+  Encoded length: 234 bytes
+  Wall pattern: 01, Wall color: 04     Floor pattern: 04, Floor color: 02
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

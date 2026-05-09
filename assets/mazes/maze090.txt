@@ -1,0 +1,7 @@
+Maze number: 90
+Loading maze from addr: 03cb82
+  Encoded length: 149 bytes
+  Wall pattern: 00, Wall color: 14     Floor pattern: 03, Floor color: 05
+  Flags: 
+  Random food adds: 0
+  Secret trick:  0 - No trick

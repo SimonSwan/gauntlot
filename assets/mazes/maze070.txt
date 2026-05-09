@@ -1,0 +1,7 @@
+Maze number: 70
+Loading maze from addr: 03be7c
+  Encoded length: 216 bytes
+  Wall pattern: 00, Wall color: 08     Floor pattern: 05, Floor color: 07
+  Flags: EXIT_CHOOSE_ONE 
+  Random food adds: 0
+  Secret trick:  0 - No trick

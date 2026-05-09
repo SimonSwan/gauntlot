@@ -1,0 +1,7 @@
+Maze number: 35
+Loading maze from addr: 03de4b
+  Encoded length: 249 bytes
+  Wall pattern: 00, Wall color: 05     Floor pattern: 01, Floor color: 01
+  Flags: EXIT_CHOOSE_ONE 
+  Random food adds: 0
+  Secret trick:  0 - No trick

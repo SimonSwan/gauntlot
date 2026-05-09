@@ -1,0 +1,7 @@
+Maze number: 26
+Loading maze from addr: 039bf6
+  Encoded length: 304 bytes
+  Wall pattern: 03, Wall color: 00     Floor pattern: 06, Floor color: 10
+  Flags: TRAPS_RANDOM WRAP_H 
+  Random food adds: 0
+  Secret trick:  0 - No trick
