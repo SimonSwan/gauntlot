@@ -1,5 +1,5 @@
 // Top-level game: loads assets, manages screens (title, select, playing, transition, gameover).
-import { Assets } from "./assets.js";
+import { Assets, MAZE_NUMBERS } from "./assets.js";
 import { Input } from "./input.js";
 import { Sounds } from "./sounds.js";
 import { Render } from "./render.js";
@@ -21,22 +21,14 @@ const FLOOR_CYCLE = [FLOOR.LIGHT_STONE, FLOOR.WOOD,      FLOOR.DARK_STONE,  FLOO
 const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
                      "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
 
-// 10 hand-crafted Gauntlet dungeons, reskinned as derelict-vessel decks for
-// the Nostromo theme.
-const LEVEL_SOURCES = [
-  { src: "level1",   name: "Deck 01 — Cargo Hold",     help: "Boarding the derelict. Watch your six." },
-  { src: "level2",   name: "Deck 02 — Engineering",    help: null },
-  { src: "level3",   name: "Deck 03 — Crew Quarters",  help: null },
-  { src: "level4",   name: "Deck 04 — Reactor Core",   help: null },
-  { src: "level5",   name: "Deck 05 — Hydroponics",    help: null },
-  { src: "level6",   name: "Deck 06 — Med Bay",        help: null },
-  { src: "level7",   name: "Deck 07 — Bridge",         help: null },
-  { src: "level8",   name: "Deck 08 — Hive",           help: null },
-  { src: "level9",   name: "Deck 09 — Synth Foundry",  help: null },
-  { src: "level10",  name: "Deck 10 — Escape Pod",     help: null },
-];
-const LEVEL_META = LEVEL_SOURCES.map((meta, i) => ({
-  ...meta,
+// The original Atari Gauntlet 1 ROM mazes, reconstructed from gex's reference
+// renders. Maze numbers track the ROM addresses; we enumerate from the
+// authoritative MAZE_NUMBERS list so gaps (eg gex's bad-decode 050 and
+// 114-149) don't generate phantom levels.
+const LEVEL_META = MAZE_NUMBERS.map((n, i) => ({
+  src:   `maze${String(n).padStart(3, "0")}`,
+  name:  `Deck ${String(i + 1).padStart(2, "0")} — ROM ${String(n).padStart(3, "0")}`,
+  help:  i === 0 ? "Boarding the derelict. Watch your six." : null,
   wall:  WALL_CYCLE[i % WALL_CYCLE.length],
   floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
   music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
