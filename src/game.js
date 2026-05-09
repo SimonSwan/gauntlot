@@ -11,20 +11,13 @@ import {
 } from "./constants.js";
 
 const LEVEL_META = [
-  { src:"trainer1", name:"Training One",   music:"music_bloodyhalo",      help:"Shoot ghosts. Find the exit." },
-  { src:"trainer2", name:"Training Two",   music:"music_bloodyhalo",      help:"Watch out for demon fire." },
-  { src:"trainer3", name:"Training Three", music:"music_bloodyhalo",      help:"Find keys to open doors." },
-  { src:"trainer4", name:"Training Four",  music:"music_bloodyhalo",      help:"Eat and drink to restore health." },
-  { src:"trainer5", name:"Training Five",  music:"music_bloodyhalo",      help:"Collect treasure for high score." },
-  { src:"trainer6", name:"Training Six",   music:"music_bloodyhalo",      help:"Destroy monster generators." },
-  { src:"trainer7", name:"Training Seven", music:"music_bloodyhalo",      help:"Use potions to nuke all monsters." },
   // Original Gauntlet 1 ROM mazes (extracted from the user's MAME ROM via gex
   // and converted to our PNG-encoded level format). Music cycles thematically.
   ...Array.from({ length: 100 }, (_, i) => {
     const n = i + 1;
     const src = `maze${String(n).padStart(3, "0")}`;
     const musics = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning","music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
-    return { src, name: `Dungeon ${n}`, music: musics[i % musics.length], help: i === 0 ? "Original arcade dungeon." : null };
+    return { src, name: `Dungeon ${n}`, music: musics[i % musics.length], help: i === 0 ? "Welcome to the Dungeon!" : null };
   }),
 ];
 

@@ -237,31 +237,54 @@ export class Weapon extends Entity {
   update(dt, frame, players, level) {
     if (--this.life <= 0) { this.dead = true; return; }
     const dv = DIR_VEC[this.dir];
-    const nx = this.x + dv[0] * this.type.speed;
-    const ny = this.y + dv[1] * this.type.speed;
-    const collision = level.occupied(nx + this.cbox.x, ny + this.cbox.y, this.cbox.w, this.cbox.h, this.owner);
-    this.x = nx; this.y = ny;
-    if (collision === true) { // wall
-      this.dead = true;
-      level.add(new Fx(nx, ny, "explosion"));
-      return;
-    }
-    if (collision) {
-      // weapon hit something
+    const speed = this.type.speed;
+    // Subdivide movement into 4-pixel steps so fast shots don't tunnel through
+    // narrow walls between frames.
+    const steps = Math.max(1, Math.ceil(speed / 4));
+    const stepX = (dv[0] * speed) / steps;
+    const stepY = (dv[1] * speed) / steps;
+    for (let s = 0; s < steps; s++) {
+      const nx = this.x + stepX, ny = this.y + stepY;
+      // Pass through anything that should never stop a shot: doors, exits,
+      // treasures, the projectile owner, other player projectiles fired by
+      // the same side, players themselves when fired by another player.
+      const collision = level.occupied(nx + this.cbox.x, ny + this.cbox.y, this.cbox.w, this.cbox.h, this.owner);
+      this.x = nx; this.y = ny;
+      if (!collision) continue;
+      if (collision === true) { // wall
+        this.dead = true;
+        level.add(new Fx(nx, ny, "explosion"));
+        return;
+      }
+      // pass-throughs: doors, exits, treasures
+      if (collision.door || collision.exit || collision.treasure) continue;
+      // pass-through: another shot from same side
+      if (collision.weapon) {
+        if ((this.owner.player && collision.owner?.player) ||
+            (this.owner.monster && collision.owner?.monster)) continue;
+        collision.dead = true;
+        this.dead = true;
+        level.add(new Fx(nx, ny, "explosion"));
+        return;
+      }
+      // pass-through: same-side player friendly fire
+      if (collision.player && this.owner.player) continue;
+      // pass-through: monster shooting another monster (no friendly fire)
+      if (collision.monster && this.owner.monster) continue;
+
+      // Damage time
       if (this.owner.player && (collision.monster || collision.generator)) {
         collision.hurt(this.type.damage, this);
       } else if (this.owner.monster && collision.player) {
         collision.hurt(this.type.damage, this);
-      } else if (this.owner.monster && collision.monster) {
-        collision.hurt(1, this);
-      } else if (collision.weapon) {
-        collision.dead = true;
-      } else if (collision.door || collision.treasure || collision.exit) {
-        // pass-through
-        return;
+      } else {
+        // Unrecognized entity — pass through harmlessly rather than create
+        // an "invisible wall" that vanishes the shot for no reason.
+        continue;
       }
       this.dead = true;
       level.add(new Fx(nx, ny, "explosion"));
+      return;
     }
   }
 }

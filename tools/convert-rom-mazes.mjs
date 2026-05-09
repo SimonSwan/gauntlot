@@ -2,11 +2,17 @@
 // via the gex tool) into our PIXEL-encoded level format.
 //
 // Each gex maze PNG is 560×560 with a 32×32 tile grid of 16×16 stamps and a
-// ~16px border. We sample each tile and classify it as wall / floor / door /
-// generator / treasure / monster / exit / player-start by colour signature.
+// 16px border. The classifier runs two passes:
 //
-// Output: assets/levels-rom/mazeNNN.png — pixel-encoded levels the game
-// already knows how to load.
+//  1. Per-tile candidate classification by colour + variance (wall / floor /
+//     out-of-bounds / exotic-cluster-with-dominant-hue).
+//  2. Connectivity cleanup: a "wall" candidate with fewer than 2 cardinal
+//     wall neighbours is re-classified as a generator (because real walls
+//     come in connected runs; isolated brick-coloured cells are almost
+//     always the brown "spinning generator" sprite).
+//
+// Output: assets/levels-rom/mazeNNN.png — pixel-encoded levels the game's
+// PNG level loader already knows how to load.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -16,150 +22,152 @@ const SRC_DIR = "assets/mazes";
 const OUT_DIR = "assets/levels-rom";
 const STAMP = 16;
 const GRID = 32;
-const BORDER = 16; // gex adds a 16px no-wrap edge
+const BORDER = 16;
 
-// PIXEL encoding (mirrors src/constants.js and javascript-gauntlet)
 const PX = {
-  NOTHING:   0x000000,
-  WALL:      0x404000,
-  DOOR:      0xC0C000,
-  START:     0x00F000,
-  EXIT:      0x004000,
-  // sub-types stored in the bits 0x0000F0
+  NOTHING: 0x000000,
+  WALL:    0x404000,
+  DOOR:    0xC0C000,
+  START:   0x00F000,
+  EXIT:    0x004000,
+  FLOOR:   0x202020, // anything non-wall, non-nothing is treated as walkable floor
   GEN:    (sub) => 0xF00000 | (sub << 4),
   MON:    (sub) => 0x400000 | (sub << 4),
   TREAS:  (sub) => 0x008000 | (sub << 4),
 };
 
-// Monster sub-types (matches our MONSTER_LIST: GHOST,DEMON,GRUNT,SORCERER,LOBBER,DEATH,THIEF)
 const M = { GHOST: 0, DEMON: 1, GRUNT: 2, SORCERER: 3, LOBBER: 4, DEATH: 5, THIEF: 6 };
-// Treasure sub-types (TREASURE_LIST: HEALTH,POISON,FOOD1,FOOD2,FOOD3,KEY,POTION,GOLD,CHEST)
 const T = { HEALTH: 0, POISON: 1, FOOD1: 2, FOOD2: 3, FOOD3: 4, KEY: 5, POTION: 6, GOLD: 7, CHEST: 8 };
 
-function avgRegion(png, x, y, w, h) {
-  let r = 0, g = 0, b = 0, n = 0;
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const i = (yy * png.width + xx) << 2;
-      r += png.data[i]; g += png.data[i+1]; b += png.data[i+2]; n++;
-    }
-  }
-  return { r: r/n|0, g: g/n|0, b: b/n|0 };
-}
-
-// detect dominant non-floor / non-wall colours by counting unique-ish hues
-function colourHistogram(png, x, y, w, h) {
-  const buckets = new Map();
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const i = (yy * png.width + xx) << 2;
-      const r = png.data[i] >> 5, g = png.data[i+1] >> 5, b = png.data[i+2] >> 5;
-      const k = (r << 6) | (g << 3) | b;
-      buckets.set(k, (buckets.get(k) || 0) + 1);
-    }
-  }
-  return buckets;
-}
+// Internal candidate codes — translated to PX.* in the final pass.
+const CAND = { WALL: "W", FLOOR: "F", VOID: "V", EXIT: "E", SPECIAL: "S" };
 
 function regionStats(png, x, y, w, h) {
-  let r = 0, g = 0, b = 0, n = 0, vr = 0, vg = 0, vb = 0;
+  let r = 0, g = 0, b = 0, n = 0;
   for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
     const i = (yy * png.width + xx) << 2;
     r += png.data[i]; g += png.data[i+1]; b += png.data[i+2]; n++;
   }
   r/=n; g/=n; b/=n;
+  let v = 0;
   for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
     const i = (yy * png.width + xx) << 2;
-    vr += (png.data[i]-r)**2; vg += (png.data[i+1]-g)**2; vb += (png.data[i+2]-b)**2;
+    v += (png.data[i]-r)**2 + (png.data[i+1]-g)**2 + (png.data[i+2]-b)**2;
   }
-  return { r, g, b, vr: vr/n, vg: vg/n, vb: vb/n };
+  return { r, g, b, lum: (r+g+b)/3, var: v/n };
 }
 
-function classify(png, tx, ty) {
-  const x = BORDER + tx * STAMP;
-  const y = BORDER + ty * STAMP;
-  if (x + STAMP > png.width || y + STAMP > png.height) return PX.NOTHING;
+function brightestPixel(png, x, y, w, h) {
+  let best = { r: 0, g: 0, b: 0, lum: 0 };
+  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+    const i = (yy * png.width + xx) << 2;
+    const r = png.data[i], g = png.data[i+1], b = png.data[i+2];
+    const lum = (r + g + b) / 3;
+    if (lum > best.lum) best = { r, g, b, lum };
+  }
+  return best;
+}
+
+// Counts how many pixels in a region are above a luminance threshold.
+function brightFraction(png, x, y, w, h, threshold) {
+  let bright = 0, total = 0;
+  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+    const i = (yy * png.width + xx) << 2;
+    if ((png.data[i] + png.data[i+1] + png.data[i+2]) / 3 >= threshold) bright++;
+    total++;
+  }
+  return bright / total;
+}
+
+// Quick first-pass classification ignoring connectivity.
+function candidate(png, tx, ty) {
+  const x = BORDER + tx * STAMP, y = BORDER + ty * STAMP;
+  if (x + STAMP > png.width || y + STAMP > png.height) return CAND.VOID;
   const a = regionStats(png, x, y, STAMP, STAMP);
+  if (a.lum < 12 && a.var < 600) return CAND.VOID;
 
-  const variance = a.vr + a.vg + a.vb;
-  const meanLum = (a.r + a.g + a.b) / 3;
+  const peak = brightestPixel(png, x, y, STAMP, STAMP);
+  const peakSat = Math.max(peak.r, peak.g, peak.b) - Math.min(peak.r, peak.g, peak.b);
+  const brightFrac = brightFraction(png, x, y, STAMP, STAMP, 100);
 
-  // Out-of-bounds (very dark)
-  if (meanLum < 12 && variance < 600) return PX.NOTHING;
+  // Wall first: dense mid-bright textured surface. A wall has lots of medium-bright
+  // pixels (mortar / brick highlights) covering most of the cell, not just a small
+  // sprite peak.
+  //   - mean luminance ≥ 50 (excludes dark floor)
+  //   - >35% of pixels are bright   (excludes sprite-on-floor, which is sparse)
+  //   - high textural variance      (excludes flat-colour items)
+  // Includes brown brick, gray cobble, and teal/blue force-field walls.
+  if (a.lum >= 50 && brightFrac >= 0.35 && a.var >= 1200) return CAND.WALL;
 
-  // Items / monsters: very high variance (brightly-coloured sprites against dark floor).
-  // Defer to the colour-based classifier below.
-  const isSpecial = variance > 8000 && meanLum > 35;
+  // EXIT text: nearly-pure-white peak on a dark cell. Restricted to maze-edge
+  // bands later in postprocess; we just flag the candidate here.
+  const isPureWhite = peak.r > 220 && peak.g > 220 && peak.b > 220;
+  const isNearEdge = (tx <= 1 || tx >= GRID - 2 || ty <= 1 || ty >= GRID - 2);
+  if (isPureWhite && a.lum < 50 && isNearEdge) return CAND.EXIT;
 
-  // Wall: medium-bright + textured (brick / cobble pattern), but NOT special.
-  if (!isSpecial && meanLum >= 60 && variance >= 2200) return PX.WALL;
+  // Sprite / item: a saturated bright peak on an otherwise dark cell.
+  // Require a small bright fraction to distinguish from textured walls.
+  if (peak.lum > 170 && peakSat > 60 && a.lum < 65 && brightFrac < 0.30) return CAND.SPECIAL;
 
-  // Floor: dark brown averaging around (40,25,12). For floor we still need to
-  // detect items / monsters / generators sitting on top. Use colour histogram
-  // — if there's a non-floor non-wall cluster, classify by its hue.
-  const buckets = colourHistogram(png, x + 2, y + 2, STAMP - 4, STAMP - 4);
-  // Identify non-background pixels (not floor, not wall).
-  let exotic = [];
-  for (const [k, n] of buckets) {
-    if (n < 6) continue;
-    const r = ((k >> 6) & 7) << 5, g = ((k >> 3) & 7) << 5, b = (k & 7) << 5;
-    const isFloor = (r < 70 && g < 50 && b < 40);
-    const wallish = (r >= 70 && r <= 160 && g >= 30 && g <= 90 && b < 60 && r - b > 25);
-    if (!isFloor && !wallish) exotic.push({ r, g, b, n });
-  }
-
-  if (exotic.length === 0) return -1; // floor (open)
-
-  // Sort by frequency
-  exotic.sort((a,b) => b.n - a.n);
-  const top = exotic[0];
-
-  // Classify by dominant exotic colour
-  // - White / light gray (ghost): r≈g≈b high
-  // - Bright red: red dominant
-  // - Blue: b dominant
-  // - Green: g dominant
-  // - Yellow: r,g high, b low
-  // - Magenta/pink: r,b high, g lower
-  const { r, g, b } = top;
-  if (r >= 160 && g >= 160 && b >= 160) return PX.MON(M.GHOST);
-  if (r > 180 && g < 120 && b < 120) return PX.MON(M.DEMON);
-  if (r > 160 && g > 100 && g < 180 && b < 80) return PX.MON(M.GRUNT);
-  if (b > 160 && r < 140 && g < 140) return PX.TREAS(T.HEALTH);
-  if (g > 140 && r < 120 && b < 120) return PX.TREAS(T.POTION);
-  if (r > 160 && g > 160 && b < 100) return PX.TREAS(T.KEY);
-  if (r > 120 && b > 120 && g < 100) return PX.MON(M.SORCERER);
-  if (r > 100 && g > 60 && b < 50) return PX.TREAS(T.GOLD);
-
-  // Heuristic: a tile of mostly black surrounded by walls + having "EXIT" text → exit. We can't OCR easily here, so flag tiles that are nearly black and at the maze edge as exits.
-  return PX.TREAS(T.GOLD); // fallback: a treasure
+  return CAND.FLOOR;
 }
 
-function postProcessExits(grid, w, h) {
-  // Look for rows/columns where the maze is bounded by wall and a strip of dark cells reaches the edge — treat the edge cell as an exit.
-  // (gex renders "EXIT" in white text on near-black background)
-  // For now we'll mark any 1-tile-wide gap in the outer wall as an exit.
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (x !== 0 && x !== w-1 && y !== 0 && y !== h-1) continue;
-      const i = y * w + x;
-      if (grid[i] !== PX.WALL && grid[i] !== PX.NOTHING) grid[i] = PX.EXIT;
-    }
-  }
+function classifySpecial(png, tx, ty) {
+  // Decide which sub-type a SPECIAL tile is by its dominant bright hue.
+  const x = BORDER + tx * STAMP, y = BORDER + ty * STAMP;
+  const peak = brightestPixel(png, x, y, STAMP, STAMP);
+  const a = regionStats(png, x, y, STAMP, STAMP);
+  const { r, g, b } = peak;
+
+  // Treasure: blue potion — strong blue
+  if (b > 180 && r < 130 && g < 150) return PX.TREAS(T.HEALTH);
+  // Yellow key
+  if (r > 200 && g > 180 && b < 120) return PX.TREAS(T.KEY);
+  // Green / forcefield = potion
+  if (g > 180 && r < 160 && b < 160) return PX.TREAS(T.POTION);
+  // Magenta / pink = sorcerer
+  if (r > 160 && b > 130 && g < 120) return PX.MON(M.SORCERER);
+  // Bright red = demon
+  if (r > 200 && g < 100 && b < 100) return PX.MON(M.DEMON);
+  // White / light gray = ghost
+  if (r > 180 && g > 180 && b > 180) return PX.MON(M.GHOST);
+  // Brown spinning circle ≈ generator. Average lum mid, peak warm.
+  if (r > 140 && g > 80 && g < 160 && b < 100) return PX.GEN(M.GHOST);
+  // Default fallback: gold
+  return PX.TREAS(T.GOLD);
+}
+
+function neighbourCount(grid, w, h, x, y, value) {
+  let c = 0;
+  if (x > 0   && grid[y*w + (x-1)]   === value) c++;
+  if (x < w-1 && grid[y*w + (x+1)]   === value) c++;
+  if (y > 0   && grid[(y-1)*w + x]   === value) c++;
+  if (y < h-1 && grid[(y+1)*w + x]   === value) c++;
+  return c;
 }
 
 function ensureStart(grid, w, h) {
-  // Pick the first floor cell that has all four cardinal neighbours non-wall.
-  for (let y = 1; y < h-1; y++) {
-    for (let x = 1; x < w-1; x++) {
-      const i = y*w + x;
-      if (grid[i] !== -1) continue;
-      const ok = grid[i-1] === -1 && grid[i+1] === -1 && grid[i-w] === -1 && grid[i+w] === -1;
-      if (ok) { grid[i] = PX.START; return; }
+  for (let y = 1; y < h-1; y++) for (let x = 1; x < w-1; x++) {
+    const i = y*w + x;
+    if (grid[i] !== PX.FLOOR) continue;
+    if (grid[i-1] === PX.FLOOR && grid[i+1] === PX.FLOOR &&
+        grid[i-w] === PX.FLOOR && grid[i+w] === PX.FLOOR) {
+      grid[i] = PX.START; return;
     }
   }
-  // fallback: any floor
-  for (let i = 0; i < grid.length; i++) if (grid[i] === -1) { grid[i] = PX.START; return; }
+  for (let i = 0; i < grid.length; i++) if (grid[i] === PX.FLOOR) { grid[i] = PX.START; return; }
+}
+
+function ensureExit(grid, w, h) {
+  for (let i = 0; i < grid.length; i++) if (grid[i] === PX.EXIT) return;
+  // pick a corner-ish floor cell as exit
+  for (let r = 0; r < 6; r++) {
+    for (let y = 1 + r; y < h - 1 - r; y++) for (let x = 1 + r; x < w - 1 - r; x++) {
+      if (x !== 1 + r && x !== w - 2 - r && y !== 1 + r && y !== h - 2 - r) continue;
+      const i = y*w + x;
+      if (grid[i] === PX.FLOOR) { grid[i] = PX.EXIT; return; }
+    }
+  }
 }
 
 async function loadPng(file) {
@@ -171,16 +179,14 @@ async function loadPng(file) {
 function writePng(file, grid, w, h) {
   const out = new PNG({ width: w, height: h });
   for (let i = 0; i < grid.length; i++) {
-    const v = grid[i] === -1 ? 0x202020 : grid[i]; // floor uses a dark grey to be visually distinct from "nothing"
+    const v = grid[i];
     const j = i << 2;
     out.data[j]   = (v >> 16) & 0xff;
     out.data[j+1] = (v >> 8) & 0xff;
     out.data[j+2] = v & 0xff;
     out.data[j+3] = 0xff;
   }
-  // For our level loader, "floor" should be anything that's not WALL or NOTHING.
-  // We use a light-blue placeholder; the loader treats non-WALL non-NOTHING as walkable.
-  out.pack().pipe(fs.createWriteStream(file));
+  return new Promise(resolve => out.pack().pipe(fs.createWriteStream(file)).on("finish", resolve));
 }
 
 async function main() {
@@ -190,25 +196,67 @@ async function main() {
 
   for (const f of files) {
     const png = await loadPng(path.join(SRC_DIR, f));
-    const grid = new Array(GRID * GRID).fill(-1);
-    for (let ty = 0; ty < GRID; ty++) {
-      for (let tx = 0; tx < GRID; tx++) {
-        grid[ty * GRID + tx] = classify(png, tx, ty);
+
+    // Pass 1: candidate per-tile classification
+    const cand = new Array(GRID * GRID);
+    for (let ty = 0; ty < GRID; ty++) for (let tx = 0; tx < GRID; tx++) {
+      cand[ty * GRID + tx] = candidate(png, tx, ty);
+    }
+
+    // Pass 2: connectivity cleanup. A "wall" tile with no orthogonal wall
+    // neighbour is almost certainly an isolated sprite (generator / monster
+    // / item / treasure pile). Demote it to SPECIAL so it becomes an entity
+    // rather than a stray invisible-feeling wall in the middle of a corridor.
+    const cleaned = cand.slice();
+    for (let ty = 1; ty < GRID-1; ty++) for (let tx = 1; tx < GRID-1; tx++) {
+      const i = ty * GRID + tx;
+      if (cand[i] !== CAND.WALL) continue;
+      const wn = neighbourCount(cand, GRID, GRID, tx, ty, CAND.WALL);
+      const vn = neighbourCount(cand, GRID, GRID, tx, ty, CAND.VOID);
+      if (wn + vn < 2) cleaned[i] = CAND.SPECIAL;
+    }
+
+    // Optional pass 3: fill 1-tile holes inside wall blocks.
+    for (let ty = 1; ty < GRID-1; ty++) for (let tx = 1; tx < GRID-1; tx++) {
+      const i = ty * GRID + tx;
+      if (cleaned[i] === CAND.WALL) continue;
+      const wn = neighbourCount(cleaned, GRID, GRID, tx, ty, CAND.WALL);
+      if (wn === 4 && cleaned[i] === CAND.FLOOR) cleaned[i] = CAND.WALL;
+    }
+
+    // Pass 4: encode to PIXEL output
+    const grid = new Array(GRID * GRID);
+    for (let i = 0; i < cleaned.length; i++) {
+      const c = cleaned[i];
+      switch (c) {
+        case CAND.WALL:    grid[i] = PX.WALL; break;
+        case CAND.VOID:    grid[i] = PX.NOTHING; break;
+        case CAND.EXIT:    grid[i] = PX.EXIT; break;
+        case CAND.SPECIAL: {
+          const tx = i % GRID, ty = (i / GRID) | 0;
+          grid[i] = classifySpecial(png, tx, ty);
+          break;
+        }
+        default:           grid[i] = PX.FLOOR;
       }
     }
-    // Force a hard wall border so the maze is enclosed.
-    for (let i = 0; i < GRID; i++) {
-      grid[i] = PX.WALL;
-      grid[(GRID-1) * GRID + i] = PX.WALL;
-      grid[i * GRID] = PX.WALL;
-      grid[i * GRID + (GRID-1)] = PX.WALL;
-    }
-    ensureStart(grid, GRID, GRID);
-    // Replace temporary -1 with floor encoding before writing.
-    for (let i = 0; i < grid.length; i++) if (grid[i] === -1) grid[i] = 0x202020;
 
-    const outFile = path.join(OUT_DIR, f);
-    writePng(outFile, grid, GRID, GRID);
+    // Force a hard wall border (some mazes have the gex EXIT text bleed past
+    // the edge — we still want the playfield enclosed).
+    for (let i = 0; i < GRID; i++) {
+      if (grid[i] !== PX.EXIT) grid[i] = PX.WALL;
+      const bot = (GRID-1) * GRID + i;
+      if (grid[bot] !== PX.EXIT) grid[bot] = PX.WALL;
+      const left = i * GRID;
+      if (grid[left] !== PX.EXIT) grid[left] = PX.WALL;
+      const right = i * GRID + (GRID-1);
+      if (grid[right] !== PX.EXIT) grid[right] = PX.WALL;
+    }
+
+    ensureStart(grid, GRID, GRID);
+    ensureExit(grid, GRID, GRID);
+
+    await writePng(path.join(OUT_DIR, f), grid, GRID, GRID);
   }
   console.log("Done.");
 }

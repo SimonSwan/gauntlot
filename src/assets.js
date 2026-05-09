@@ -113,30 +113,10 @@ const SOUND_LIST = {
   music_warbringer:      "assets/sounds/music.warbringer.mp3",
 };
 
-const LEVEL_LIST = [
-  "assets/levels-jg/trainer1.png",
-  "assets/levels-jg/trainer2.png",
-  "assets/levels-jg/trainer3.png",
-  "assets/levels-jg/trainer4.png",
-  "assets/levels-jg/trainer5.png",
-  "assets/levels-jg/trainer6.png",
-  "assets/levels-jg/trainer7.png",
-  "assets/levels-jg/level1.png",
-  "assets/levels-jg/level2.png",
-  "assets/levels-jg/level3.png",
-  "assets/levels-jg/level4.png",
-  "assets/levels-jg/level5.png",
-  "assets/levels-jg/level6.png",
-  "assets/levels-jg/level7.png",
-  "assets/levels-jg/level8.png",
-  "assets/levels-jg/level9.png",
-  "assets/levels-jg/level10.png",
-  // ROM-extracted Gauntlet 1 mazes (converted via tools/convert-rom-mazes.mjs).
-  // 115 mazes; we only wire the first batch into the level progression by default.
-  ...Array.from({ length: 115 }, (_, i) =>
-    `assets/levels-rom/maze${String(i + 1).padStart(3, "0")}.png`
-  ),
-];
+// 115 ROM-extracted Gauntlet 1 mazes (converted via tools/convert-rom-mazes.mjs).
+const LEVEL_LIST = Array.from({ length: 115 }, (_, i) =>
+  `assets/levels-rom/maze${String(i + 1).padStart(3, "0")}.png`
+);
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
