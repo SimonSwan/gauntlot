@@ -354,10 +354,10 @@ export class Render {
           else this._drawWall(ctx, tx*TILE, ty*TILE, c.wallMask);
           continue;
         }
-        // Floor: column = floor theme, row = 0.
-        if (atlas) ctx.drawImage(atlas, floorTheme * TILE, 0, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
-        else this._drawFloor(ctx, tx*TILE, ty*TILE);
-        // Optional shadow overlay where this floor sits against a wall.
+        // Floor: flat sci-fi deck plate, no busy stone texture. The shadow
+        // mask still gets applied below so corridors abutting walls keep a
+        // soft drop shadow for readability.
+        this._drawFloor(ctx, tx*TILE, ty*TILE);
         if (c.shadow && atlas) {
           ctx.drawImage(atlas, c.shadow * TILE, 7 * TILE, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
         }
@@ -369,32 +369,17 @@ export class Render {
     ctx.restore();
   }
 
-  // Brown stone-block floor with subtle grid + flecks. Matches the arcade
-  // playfield ground.
+  // Flat sci-fi deck plate. A single dark base colour with a 1-px tile
+  // outline so adjacent floor cells still read as a grid, but no busy
+  // stone-block texture. Subtle enough to keep entity sprites readable.
   _drawFloor(ctx, x, y) {
-    ctx.fillStyle = "#3b2010";
+    ctx.fillStyle = "#1a1d24";
     ctx.fillRect(x, y, TILE, TILE);
-    // 4 stone blocks per tile in a 2×2 grid, each ~16×16 with mortar.
-    ctx.fillStyle = "#5a3115";
-    ctx.fillRect(x + 1, y + 1, 14, 14);
-    ctx.fillRect(x + 17, y + 1, 14, 14);
-    ctx.fillRect(x + 1, y + 17, 14, 14);
-    ctx.fillRect(x + 17, y + 17, 14, 14);
-    // Top highlight on each block.
-    ctx.fillStyle = "rgba(255,180,120,0.18)";
-    ctx.fillRect(x + 1, y + 1, 14, 1);
-    ctx.fillRect(x + 17, y + 1, 14, 1);
-    ctx.fillRect(x + 1, y + 17, 14, 1);
-    ctx.fillRect(x + 17, y + 17, 14, 1);
-    // Flecks for arcade grit.
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.fillRect(x + 4, y + 5, 1, 1);
-    ctx.fillRect(x + 11, y + 9, 1, 1);
-    ctx.fillRect(x + 22, y + 4, 1, 1);
-    ctx.fillRect(x + 26, y + 13, 1, 1);
-    ctx.fillRect(x + 6, y + 22, 1, 1);
-    ctx.fillRect(x + 19, y + 25, 1, 1);
-    ctx.fillRect(x + 27, y + 28, 1, 1);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(x, y, TILE, 1);                       // top edge highlight
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    ctx.fillRect(x, y + TILE - 1, TILE, 1);            // bottom edge shadow
+    ctx.fillRect(x + TILE - 1, y, 1, TILE);            // right edge shadow
   }
 
   _drawWall(ctx, x, y, mask) {
@@ -598,7 +583,7 @@ export class Render {
     if (L.game.x > 0)
       ctx.fillRect(0, 0, L.game.x, L.H);
 
-    this._drawHudColumn(ctx, L, players, levelName, frame);
+    this._drawHudColumn(ctx, L, players, level, levelName, frame);
   }
 
   // Single right HUD column laid out per the cabinet spec, in native arcade
@@ -607,10 +592,10 @@ export class Render {
   //   2..26    GAUNTLET logo (80×24)
   //   32..40   "LEVEL" small label
   //   44..60   big level digit (16×16)
-  //   66..162  four 24-tall hero blocks (Warrior/Valkyrie/Wizard/Elf)
-  //   220..228 "©1985"
-  //   228..236 "ATARI GAMES"
-  _drawHudColumn(ctx, L, players, levelName, frame) {
+  //   66..186  four 24-tall hero blocks
+  //   196..204 "MAP" label
+  //   206..   level minimap
+  _drawHudColumn(ctx, L, players, level, levelName, frame) {
     const K = L.K;
     const px = L.hud.x; // panel x in screen pixels
     const py = 0;
@@ -641,12 +626,85 @@ export class Render {
       this._drawHeroBlock(ctx, players[slot], px, blockY, nW, K, frame);
     }
 
-    // Footer trim — Weyland-Yutani branding for the Nostromo theme.
-    // Two short lines fit cleanly in the 96-px panel without overflow.
-    const yearW = this.fontSmall.measure("WEYLAND", 1);
-    const corpW = this.fontSmall.measure("YUTANI",  1);
-    this.fontSmall.draw(ctx, "WEYLAND", sx((nW - yearW) / 2), sy(220), "#fff", K);
-    this.fontSmall.draw(ctx, "YUTANI",  sx((nW - corpW) / 2), sy(228), "#fff", K);
+    // Footer: level minimap. Replaces the old WEYLAND-YUTANI placeholder. The
+    // map shows the whole level layout at 1 native px per tile, plus dots for
+    // each player, the exit, generators, and monsters.
+    const mapLabelW = this.fontSmall.measure("MAP", 1);
+    this.fontSmall.draw(ctx, "MAP", sx((nW - mapLabelW) / 2), sy(196), "#fff", K);
+    this._drawMinimap(ctx, sx, sy, K, nW, 206, level, players);
+  }
+
+  // Draw a level overview to the right HUD column. The map sits in a panel
+  // anchored at native (0, mapTopY); we centre the level's tw x th grid
+  // within the panel and overlay the player / exit / monster / generator
+  // dots on top.
+  _drawMinimap(ctx, sx, sy, K, panelW, mapTopY, level, players) {
+    if (!level) return;
+    const tw = level.tw, th = level.th;
+    // Choose a per-tile pixel size that fits both the panel width AND the
+    // remaining vertical space (we have ~30 native px from mapTopY to the
+    // panel bottom at y=240).
+    const maxW = panelW - 4;
+    const maxH = 240 - mapTopY - 2;
+    const pxPerTile = Math.max(1, Math.min(Math.floor(maxW / tw), Math.floor(maxH / th)));
+    const mapW = tw * pxPerTile;
+    const mapH = th * pxPerTile;
+    const x0Native = (panelW - mapW) / 2;
+
+    // Background frame
+    ctx.fillStyle = "#000";
+    ctx.fillRect(sx(x0Native - 1), sy(mapTopY - 1), (mapW + 2) * K, (mapH + 2) * K);
+    ctx.fillStyle = "#1a1a22";
+    ctx.fillRect(sx(x0Native), sy(mapTopY), mapW * K, mapH * K);
+
+    // Walls + floor
+    for (let ty = 0; ty < th; ty++) {
+      for (let tx = 0; tx < tw; tx++) {
+        const c = level.cells[tx + ty * tw];
+        if (!c) continue;
+        let col = null;
+        if (c.wall) col = "#7a8090";
+        else if (c.nothing) col = "#000";
+        if (col) {
+          ctx.fillStyle = col;
+          ctx.fillRect(sx(x0Native + tx * pxPerTile), sy(mapTopY + ty * pxPerTile),
+                       pxPerTile * K, pxPerTile * K);
+        }
+      }
+    }
+
+    // Entity dots — exits, generators, treasures, monsters
+    for (const e of level.entities) {
+      if (e.dead) continue;
+      const tx = Math.floor(e.x / TILE), ty = Math.floor(e.y / TILE);
+      if (tx < 0 || ty < 0 || tx >= tw || ty >= th) continue;
+      let col = null;
+      if (e.exit)            col = "#3afa6a";
+      else if (e.generator)  col = "#ff5040";
+      else if (e.monster)    col = "#ff90c0";
+      else if (e.treasure)   col = "#ffd84a";
+      if (col) {
+        ctx.fillStyle = col;
+        ctx.fillRect(sx(x0Native + tx * pxPerTile), sy(mapTopY + ty * pxPerTile),
+                     pxPerTile * K, pxPerTile * K);
+      }
+    }
+
+    // Player dots (drawn last so they always show on top). Each player gets
+    // a square in their own colour with a 1-px white border so they stand
+    // out against monster dots.
+    for (const p of players) {
+      if (!p.joined || p.dead) continue;
+      const tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
+      if (tx < 0 || ty < 0 || tx >= tw || ty >= th) continue;
+      const dotPx = Math.max(2, pxPerTile + 1);
+      const px = sx(x0Native + tx * pxPerTile - 0.5);
+      const py = sy(mapTopY  + ty * pxPerTile - 0.5);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(px - 1, py - 1, dotPx * K + 2, dotPx * K + 2);
+      ctx.fillStyle = p.type.color;
+      ctx.fillRect(px, py, dotPx * K, dotPx * K);
+    }
   }
 
   // Draw a single 24-native-tall hero block at the given native Y.
