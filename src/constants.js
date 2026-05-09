@@ -120,3 +120,16 @@ export const SCORE_PER_LEVEL = 1000;
 
 // Camera follows centroid of active players
 export const VIEWPORT = { TW: 20, TH: 14 }; // tiles wide x high
+
+// Wall + floor themes from the ROM tile atlas (backgrounds.png).
+// Numbers index directly into atlas rows (walls) / atlas cols (floors).
+export const WALL = {
+  BLUE: 1, BLUE_BRICK: 2, PURPLE_TILE: 3,
+  BLUE_COBBLE: 4, PURPLE_COBBLE: 5, CONCRETE: 6,
+  MAX: 6,
+};
+export const FLOOR = {
+  BROWN_BOARDS: 1, LIGHTBROWN_BOARDS: 2, GREEN_BOARDS: 3, GREY_BOARDS: 4,
+  WOOD: 5, LIGHT_STONE: 6, DARK_STONE: 7,
+  BROWN_LAMINATE: 8, PURPLE_LAMINATE: 9,
+};

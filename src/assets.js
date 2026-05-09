@@ -67,6 +67,12 @@ const IMAGE_LIST = {
   exitTo8:        "assets/sprites/dungeon-exit-to-8.png",
   teleport:       "assets/sprites/dungeon-teleport-sprite-sheet.png",
 
+  // Pre-decoded playfield tile atlas (Jake Gordon's javascript-gauntlet,
+  // sourced from opengameart.org/content/gauntlet-like-tiles). 512×256 of
+  // 32×32 cells: row 0 = 9 floor themes, rows 1-6 = 6 wall themes (each row
+  // has 16 mask variants), row 7 = 8 shadow variants.
+  backgrounds:    "assets/sprites/backgrounds.png",
+
   // FX
   explosion:      "assets/sprites/explosion-collision-sprite-sheet.png",
   explosionTeleport: "assets/sprites/explosion-teleport-sprite-sheet.png",

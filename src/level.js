@@ -54,7 +54,9 @@ export class Level {
           this.starts.push({ x: tx*TILE, y: ty*TILE });
         }
         if (isWall(p)) {
-          // bitmask: 1=N,2=E,4=S,8=W neighbour walls
+          // Neighbor mask used to pick the right wall sprite from the atlas:
+          //   1 = N, 2 = E, 4 = S, 8 = W. Same encoding as Jake Gordon's
+          //   javascript-gauntlet so his backgrounds.png atlas slots match.
           let mask = 0;
           if (isWall(this.pixel(tx, ty-1))) mask |= 1;
           if (isWall(this.pixel(tx+1, ty))) mask |= 2;
@@ -64,6 +66,15 @@ export class Level {
           cell.wallMask = mask;
         } else if (p === PIXEL.NOTHING) {
           cell.nothing = true;
+        } else {
+          // Floor cell — also compute a 3-bit shadow mask describing which
+          // adjacent cells to the left / below-left / below are walls. Jake's
+          // atlas reserves row 7 cols 1..7 for these shadow overlays.
+          let smask = 0;
+          if (isWall(this.pixel(tx-1, ty)))   smask |= 1;
+          if (isWall(this.pixel(tx-1, ty+1))) smask |= 2;
+          if (isWall(this.pixel(tx, ty+1)))   smask |= 4;
+          if (smask) cell.shadow = smask;
         }
 
         if (isType(p, PIXEL.EXIT)) {

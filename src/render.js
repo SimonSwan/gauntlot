@@ -327,18 +327,36 @@ export class Render {
     const tx1 = Math.min(level.tw - 1, Math.ceil((viewport.x + this.layout.worldW) / TILE) + 1);
     const ty1 = Math.min(level.th - 1, Math.ceil((viewport.y + this.layout.worldH) / TILE) + 1);
 
+    // Pre-decoded ROM tile atlas — Jake Gordon's backgrounds.png. Layout:
+    //   row 0: 9 floor textures at sx=1..9
+    //   rows 1..6: 6 wall themes; each row has 16 mask variants at sx=0..15
+    //   row 7: shadow overlays at sx=0..7 (3-bit shadow mask)
+    const atlas = this.assets.images.backgrounds;
+    const wallTheme  = level.meta?.wall  || 4; // BLUE_COBBLE
+    const floorTheme = level.meta?.floor || 6; // LIGHT_STONE
+
     for (let ty = ty0; ty <= ty1; ty++) {
       for (let tx = tx0; tx <= tx1; tx++) {
         const c = level.cells[tx + ty * level.tw];
-        if (!c || c.nothing || c.wall) continue;
-        this._drawFloor(ctx, tx*TILE, ty*TILE);
-      }
-    }
-    for (let ty = ty0; ty <= ty1; ty++) {
-      for (let tx = tx0; tx <= tx1; tx++) {
-        const c = level.cells[tx + ty * level.tw];
-        if (!c || !c.wall) continue;
-        this._drawWall(ctx, tx*TILE, ty*TILE, c.wallMask);
+        if (!c) continue;
+        if (c.nothing) {
+          // Out-of-bounds — atlas (0, 0) is a black void cell.
+          if (atlas) ctx.drawImage(atlas, 0, 0, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+          continue;
+        }
+        if (c.wall) {
+          // Wall: column = neighbour mask, row = wall theme.
+          if (atlas) ctx.drawImage(atlas, c.wallMask * TILE, wallTheme * TILE, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+          else this._drawWall(ctx, tx*TILE, ty*TILE, c.wallMask);
+          continue;
+        }
+        // Floor: column = floor theme, row = 0.
+        if (atlas) ctx.drawImage(atlas, floorTheme * TILE, 0, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+        else this._drawFloor(ctx, tx*TILE, ty*TILE);
+        // Optional shadow overlay where this floor sits against a wall.
+        if (c.shadow && atlas) {
+          ctx.drawImage(atlas, c.shadow * TILE, 7 * TILE, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+        }
       }
     }
     const ents = level.entities.slice().sort((a,b) => (a.y - b.y));

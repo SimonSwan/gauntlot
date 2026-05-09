@@ -8,16 +8,33 @@ import { Player } from "./player.js";
 import { Fx } from "./entities.js";
 import {
   TILE, FPS, PLAYER_TYPES, PLAYER_LIST, VIEWPORT, SCORE_PER_LEVEL,
+  WALL, FLOOR,
 } from "./constants.js";
+
+// Per-dungeon wall + floor themes cycle through the available ROM-atlas
+// palettes so consecutive levels visually differ — same approach Jake's
+// javascript-gauntlet uses for its 10 hand-crafted dungeons.
+const WALL_CYCLE  = [WALL.BLUE_COBBLE, WALL.CONCRETE,    WALL.BLUE,         WALL.PURPLE_COBBLE,
+                     WALL.BLUE_BRICK,  WALL.PURPLE_TILE, WALL.CONCRETE,     WALL.BLUE_COBBLE];
+const FLOOR_CYCLE = [FLOOR.LIGHT_STONE, FLOOR.WOOD,      FLOOR.DARK_STONE,  FLOOR.BROWN_LAMINATE,
+                     FLOOR.PURPLE_LAMINATE, FLOOR.GREY_BOARDS, FLOOR.WOOD,  FLOOR.LIGHT_STONE];
+const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
+                     "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
 
 const LEVEL_META = [
   // Original Gauntlet 1 ROM mazes (extracted from the user's MAME ROM via gex
-  // and converted to our PNG-encoded level format). Music cycles thematically.
+  // and converted to our PNG-encoded level format).
   ...Array.from({ length: 100 }, (_, i) => {
     const n = i + 1;
     const src = `maze${String(n).padStart(3, "0")}`;
-    const musics = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning","music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
-    return { src, name: `Dungeon ${n}`, music: musics[i % musics.length], help: i === 0 ? "Welcome to the Dungeon!" : null };
+    return {
+      src,
+      name: `Dungeon ${n}`,
+      wall:  WALL_CYCLE[i % WALL_CYCLE.length],
+      floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
+      music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
+      help: i === 0 ? "Welcome to the Dungeon!" : null,
+    };
   }),
 ];
 
