@@ -7,17 +7,17 @@ import { Level } from "./level.js";
 import { Player } from "./player.js";
 import { Fx } from "./entities.js";
 import {
-  TILE, FPS, PLAYER_TYPES, PLAYER_LIST, VIEWPORT, SCORE_PER_LEVEL,
-  WALL, FLOOR,
+  CELL_PX, FPS, PLAYER_TYPES, PLAYER_LIST, VIEWPORT, SCORE_PER_LEVEL,
+  WALL_THEME, FLOOR_THEME,
 } from "./constants.js";
 
 // Per-dungeon wall + floor themes cycle through the available ROM-atlas
 // palettes so consecutive levels visually differ — same approach Jake's
 // javascript-gauntlet uses for its 10 hand-crafted dungeons.
-const WALL_CYCLE  = [WALL.BLUE_COBBLE, WALL.CONCRETE,    WALL.BLUE,         WALL.PURPLE_COBBLE,
-                     WALL.BLUE_BRICK,  WALL.PURPLE_TILE, WALL.CONCRETE,     WALL.BLUE_COBBLE];
-const FLOOR_CYCLE = [FLOOR.LIGHT_STONE, FLOOR.WOOD,      FLOOR.DARK_STONE,  FLOOR.BROWN_LAMINATE,
-                     FLOOR.PURPLE_LAMINATE, FLOOR.GREY_BOARDS, FLOOR.WOOD,  FLOOR.LIGHT_STONE];
+const WALL_CYCLE  = [WALL_THEME.BLUE_COBBLE, WALL_THEME.CONCRETE,    WALL_THEME.BLUE,         WALL_THEME.PURPLE_COBBLE,
+                     WALL_THEME.BLUE_BRICK,  WALL_THEME.PURPLE_TILE, WALL_THEME.CONCRETE,     WALL_THEME.BLUE_COBBLE];
+const FLOOR_CYCLE = [FLOOR_THEME.LIGHT_STONE, FLOOR_THEME.WOOD,      FLOOR_THEME.DARK_STONE,  FLOOR_THEME.BROWN_LAMINATE,
+                     FLOOR_THEME.PURPLE_LAMINATE, FLOOR_THEME.GREY_BOARDS, FLOOR_THEME.WOOD,  FLOOR_THEME.LIGHT_STONE];
 const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
                      "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
 
@@ -48,10 +48,10 @@ export class Game {
     this.state = STATE.BOOT;
     this.frame = 0;
     this.players = [
-      new Player(0, PLAYER_TYPES.MARINE),
-      new Player(1, PLAYER_TYPES.TECH),
-      new Player(2, PLAYER_TYPES.SMUGGLER),
-      new Player(3, PLAYER_TYPES.SYNTHETIC),
+      new Player(0, PLAYER_TYPES.WARRIOR),
+      new Player(1, PLAYER_TYPES.VALKYRIE),
+      new Player(2, PLAYER_TYPES.WIZARD),
+      new Player(3, PLAYER_TYPES.ELF),
     ];
     this.activeTypes = [null, null, null, null]; // chosen type indices per slot during select
 
@@ -115,10 +115,10 @@ export class Game {
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
 
-    // NOSTROMO wordmark — drawn through the ROM bitmap font with a red
+    // GAUNTLET wordmark — drawn through the ROM bitmap font with a red
     // shadow underlay, snapped to an integer scale picked from the window.
     const fontSmall = this.render.fontSmall;
-    const titleText = "NOSTROMO";
+    const titleText = "GAUNTLET";
     const titleScale = Math.max(4, Math.floor(W * 0.6 / fontSmall.measure(titleText, 1)));
     const tw = fontSmall.measure(titleText, titleScale);
     const tx = Math.floor((W - tw) / 2);
@@ -126,7 +126,7 @@ export class Game {
     fontSmall.draw(ctx, titleText, tx + titleScale, ty + titleScale, "#9a0a0a", titleScale);
     fontSmall.draw(ctx, titleText, tx,              ty,              "#FFFFFF", titleScale);
     // Subtitle
-    const subtitle = "ALIENS - DERELICT VESSEL";
+    const subtitle = "1985 ATARI - 4 PLAYER ACTION";
     const subScale = Math.max(2, Math.floor(titleScale / 3));
     const sw = fontSmall.measure(subtitle, subScale);
     fontSmall.draw(ctx, subtitle, Math.floor((W - sw) / 2), ty + 8 * titleScale + 12, "#FFB000", subScale);
@@ -160,7 +160,7 @@ export class Game {
     ctx.fillText("P1 WASD+G/H    P2 IJKL+;/'    P3 ARROWS+./,    P4 NUMPAD",
       W/2, Math.floor(H * 0.92));
     ctx.fillStyle = "#444";
-    ctx.fillText("WEYLAND-YUTANI CORP. CRYO ENTERTAINMENT DIVISION", W/2, Math.floor(H * 0.96));
+    ctx.fillText("(C)1985 ATARI GAMES - FAN RECREATION", W/2, Math.floor(H * 0.96));
 
     if (this.input.anyPressed()) {
       this.sounds.music("music_lostcorridors", 0.4);
@@ -284,7 +284,7 @@ export class Game {
       this.level.game = this;
       // place each joined player at a starting position
       let starts = this.level.starts.slice();
-      if (starts.length === 0) starts = [{ x: TILE*2, y: TILE*2 }];
+      if (starts.length === 0) starts = [{ x: CELL_PX*2, y: CELL_PX*2 }];
       // If we have fewer starts than joined players, fan additional players
       // out into nearby walkable cells so they don't all spawn stacked.
       const offsets = [[0,0],[1,0],[0,1],[1,1],[-1,0],[0,-1],[-1,1],[1,-1]];
@@ -295,7 +295,7 @@ export class Game {
         p.level = this.level;
         const s = starts[Math.min(spawnIdx, starts.length - 1)];
         const o = offsets[spawnIdx % offsets.length];
-        let nx = s.x + o[0] * TILE, ny = s.y + o[1] * TILE;
+        let nx = s.x + o[0] * CELL_PX, ny = s.y + o[1] * CELL_PX;
         // If the candidate cell is a wall, fall back to the start.
         const cell = this.level.cell(nx, ny);
         if (!cell || cell.wall || cell.nothing) { nx = s.x; ny = s.y; }
@@ -424,7 +424,7 @@ export class Game {
     if (!this.level) return;
     let cx = 0, cy = 0, n = 0;
     for (const p of this.players) {
-      if (p.joined) { cx += p.x + TILE/2; cy += p.y + TILE/2; n++; }
+      if (p.joined) { cx += p.x + CELL_PX/2; cy += p.y + CELL_PX/2; n++; }
     }
     if (n === 0) return;
     cx /= n; cy /= n;

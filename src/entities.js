@@ -1,6 +1,6 @@
 // All non-player entities: Monster, Generator, Treasure, Door, Exit, Weapon, Fx.
 import {
-  TILE, FPS, DIR, DIR_VEC, CBOX,
+  CELL_PX, FPS, DIR, DIR_VEC, CBOX,
   PREFERRED_DIRECTIONS, isVertical, isHorizontal, isDiagonal,
 } from "./constants.js";
 
@@ -92,8 +92,8 @@ export class Monster extends Entity {
 
   fire(level, target) {
     if (!this.type.weapon || this.reloading > 0) return false;
-    const dx = Math.abs(Math.floor(this.x / TILE) - Math.floor(target.x / TILE));
-    const dy = Math.abs(Math.floor(this.y / TILE) - Math.floor(target.y / TILE));
+    const dx = Math.abs(Math.floor(this.x / CELL_PX) - Math.floor(target.x / CELL_PX));
+    const dy = Math.abs(Math.floor(this.y / CELL_PX) - Math.floor(target.y / CELL_PX));
     const dd = Math.abs(dx - dy);
     if (((dx < 2) && isVertical(this.dir)) ||
         ((dy < 2) && isHorizontal(this.dir)) ||
@@ -143,7 +143,7 @@ export class Generator extends Entity {
     if (this.count >= this.type.max) return;
     if (--this.pending > 0) return;
     const d = (Math.random() * 8) | 0;
-    const pos = level.canmove(this, d, TILE);
+    const pos = level.canmove(this, d, CELL_PX);
     if (pos) {
       const m = new Monster(pos.x, pos.y, this.mtype, this);
       level.add(m);
@@ -200,7 +200,7 @@ export class Door extends Entity {
     this.opening = (speed | 0) + this.type.openSpeed;
     this.level.game?.sounds.play("opendoor", 0.3);
     // chain to neighbouring doors
-    for (const [dx, dy] of [[-TILE,0],[TILE,0],[0,-TILE],[0,TILE]]) {
+    for (const [dx, dy] of [[-CELL_PX,0],[CELL_PX,0],[0,-CELL_PX],[0,CELL_PX]]) {
       const c = this.level.cell(this.x + dx, this.y + dy);
       if (!c) continue;
       const next = c.occupied.find(e => e.door && !e.opening);

@@ -1,5 +1,5 @@
 // Arcade-faithful renderer.
-import { TILE, DIR, FPS } from "./constants.js";
+import { CELL_PX, DIR, FPS } from "./constants.js";
 
 // ---------------------------------------------------------------------------
 // BitmapFont — renders strings from a ROM-extracted glyph sheet.
@@ -208,32 +208,35 @@ const SP = 24;
 // Nostromo sprite sheets — 9-frame heroes / 4-frame monsters at 24×24,
 // matching the Gauntlet renderer's frame layout so the same animation
 // math drives both themes.
+// Player sheets: layout matches HEROES[] frameCols/frameRows in constants.js.
 const PLAYER_SHEETS = {
-  marine:    { img: "marine",    cols: 9, rows: 8 },
-  tech:      { img: "tech",      cols: 9, rows: 8 },
-  smuggler:  { img: "smuggler",  cols: 9, rows: 8 },
-  synthetic: { img: "synthetic", cols: 9, rows: 8 },
+  warrior:  { img: "warrior",  cols: 9, rows: 8 },
+  valkyrie: { img: "valkyrie", cols: 9, rows: 8 },
+  wizard:   { img: "wizard",   cols: 6, rows: 8 },
+  elf:      { img: "elf",      cols: 8, rows: 8 },
 };
+// Monster sheets: layout matches MONSTER_SPRITES[] frameCols/frameRows.
 const MONSTER_SHEETS = {
-  drone:          { img: "drone",          cols: 4, rows: 8 },
-  spitter:        { img: "spitter",        cols: 4, rows: 8 },
-  runner:         { img: "runner",         cols: 4, rows: 8 },
-  praetorian:     { img: "praetorian",     cols: 4, rows: 8 },
-  protoXeno:      { img: "protoXeno",      cols: 4, rows: 8 },
-  synthSecurity:  { img: "synthSecurity",  cols: 4, rows: 8 },
-  workerAndroid:  { img: "workerAndroid",  cols: 4, rows: 8 },
+  ghost:    { img: "ghost",    cols: 4, rows: 8 },
+  demon:    { img: "demon",    cols: 8, rows: 8 },
+  grunt:    { img: "grunt",    cols: 5, rows: 8 },
+  sorcerer: { img: "sorcerer", cols: 6, rows: 8 },
+  lobber:   { img: "lobber",   cols: 5, rows: 5 },
+  death:    { img: "death",    cols: 3, rows: 8 },
+  thief:    { img: "thief",    cols: 9, rows: 8 },
 };
-// Treasure key (from constants) → image asset key.
+// Treasure key (from constants) → image asset key. Asset keys come from
+// IMAGE_LIST in assets.js.
 const TREASURE_IMG = {
-  medkit:     "medkit",
-  ammo:       "ammo",
-  oxygen:     "oxygen",
-  adrenaline: "adrenaline",
-  accessCard: "accessCard",
-  emp:        "emp",
-  credits:    "credits",
-  dataCore:   "dataCore",
-  poison:     "poison",
+  health: "health",
+  poison: "poison",
+  food1:  "food1",
+  food2:  "food2",
+  food3:  "food3",
+  key:    "key",
+  potion: "potion",
+  gold:   "gold",
+  chest:  "chest",
 };
 
 // In the reference cabinet screenshot the four heroes stack top-to-bottom in
@@ -276,13 +279,13 @@ export class Render {
     const K = Math.max(1, Math.floor(H / NATIVE_H));
     const hudW = NATIVE_HUD_W * K;
 
-    // Game viewport eats whatever's left. We still render the maze at TILE=32
+    // Game viewport eats whatever's left. We still render the maze at CELL_PX=32
     // world pixels so collisions stay tile-accurate; the camera shows however
     // many tiles fit in the available area.
     const availW = W - hudW;
     const availH = H;
-    const NATIVE_GAME_W = 16 * TILE; // pleasant default for window sizes
-    const NATIVE_GAME_H = 14 * TILE;
+    const NATIVE_GAME_W = 16 * CELL_PX; // pleasant default for window sizes
+    const NATIVE_GAME_H = 14 * CELL_PX;
     const gameScale = Math.min(availW / NATIVE_GAME_W, availH / NATIVE_GAME_H);
     const gameW = Math.floor(NATIVE_GAME_W * gameScale);
     const gameH = Math.floor(NATIVE_GAME_H * gameScale);
@@ -326,10 +329,10 @@ export class Render {
     ctx.scale(scale, scale);
     ctx.translate(-viewport.x, -viewport.y);
 
-    const tx0 = Math.max(0, Math.floor(viewport.x / TILE) - 1);
-    const ty0 = Math.max(0, Math.floor(viewport.y / TILE) - 1);
-    const tx1 = Math.min(level.tw - 1, Math.ceil((viewport.x + this.layout.worldW) / TILE) + 1);
-    const ty1 = Math.min(level.th - 1, Math.ceil((viewport.y + this.layout.worldH) / TILE) + 1);
+    const tx0 = Math.max(0, Math.floor(viewport.x / CELL_PX) - 1);
+    const ty0 = Math.max(0, Math.floor(viewport.y / CELL_PX) - 1);
+    const tx1 = Math.min(level.tw - 1, Math.ceil((viewport.x + this.layout.worldW) / CELL_PX) + 1);
+    const ty1 = Math.min(level.th - 1, Math.ceil((viewport.y + this.layout.worldH) / CELL_PX) + 1);
 
     // Pre-decoded ROM tile atlas — Jake Gordon's backgrounds.png. Layout:
     //   row 0: 9 floor textures at sx=1..9
@@ -345,21 +348,21 @@ export class Render {
         if (!c) continue;
         if (c.nothing) {
           // Out-of-bounds — atlas (0, 0) is a black void cell.
-          if (atlas) ctx.drawImage(atlas, 0, 0, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+          if (atlas) ctx.drawImage(atlas, 0, 0, CELL_PX, CELL_PX, tx*CELL_PX, ty*CELL_PX, CELL_PX, CELL_PX);
           continue;
         }
         if (c.wall) {
           // Wall: column = neighbour mask, row = wall theme.
-          if (atlas) ctx.drawImage(atlas, c.wallMask * TILE, wallTheme * TILE, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
-          else this._drawWall(ctx, tx*TILE, ty*TILE, c.wallMask);
+          if (atlas) ctx.drawImage(atlas, c.wallMask * CELL_PX, wallTheme * CELL_PX, CELL_PX, CELL_PX, tx*CELL_PX, ty*CELL_PX, CELL_PX, CELL_PX);
+          else this._drawWall(ctx, tx*CELL_PX, ty*CELL_PX, c.wallMask);
           continue;
         }
         // Floor: flat sci-fi deck plate, no busy stone texture. The shadow
         // mask still gets applied below so corridors abutting walls keep a
         // soft drop shadow for readability.
-        this._drawFloor(ctx, tx*TILE, ty*TILE);
+        this._drawFloor(ctx, tx*CELL_PX, ty*CELL_PX);
         if (c.shadow && atlas) {
-          ctx.drawImage(atlas, c.shadow * TILE, 7 * TILE, TILE, TILE, tx*TILE, ty*TILE, TILE, TILE);
+          ctx.drawImage(atlas, c.shadow * CELL_PX, 7 * CELL_PX, CELL_PX, CELL_PX, tx*CELL_PX, ty*CELL_PX, CELL_PX, CELL_PX);
         }
       }
     }
@@ -374,41 +377,41 @@ export class Render {
   // stone-block texture. Subtle enough to keep entity sprites readable.
   _drawFloor(ctx, x, y) {
     ctx.fillStyle = "#1a1d24";
-    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillRect(x, y, CELL_PX, CELL_PX);
     ctx.fillStyle = "rgba(255,255,255,0.04)";
-    ctx.fillRect(x, y, TILE, 1);                       // top edge highlight
+    ctx.fillRect(x, y, CELL_PX, 1);                       // top edge highlight
     ctx.fillStyle = "rgba(0,0,0,0.30)";
-    ctx.fillRect(x, y + TILE - 1, TILE, 1);            // bottom edge shadow
-    ctx.fillRect(x + TILE - 1, y, 1, TILE);            // right edge shadow
+    ctx.fillRect(x, y + CELL_PX - 1, CELL_PX, 1);            // bottom edge shadow
+    ctx.fillRect(x + CELL_PX - 1, y, 1, CELL_PX);            // right edge shadow
   }
 
   _drawWall(ctx, x, y, mask) {
     // Blue-cobble wall — the level-8 palette in the arcade reference. Solid
     // dark base with paler stone tiles in two rows, and crisp pixel mortar.
     ctx.fillStyle = "#1c1d68";
-    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillRect(x, y, CELL_PX, CELL_PX);
     ctx.fillStyle = "#2c34a4";
-    for (let by = 0; by < TILE; by += 8) {
+    for (let by = 0; by < CELL_PX; by += 8) {
       const off = ((y + by) / 8) % 2 ? 8 : 0;
-      for (let bx = 0; bx < TILE + 8; bx += 16) {
-        ctx.fillRect(x + ((bx + off) % TILE), y + by, 14, 7);
+      for (let bx = 0; bx < CELL_PX + 8; bx += 16) {
+        ctx.fillRect(x + ((bx + off) % CELL_PX), y + by, 14, 7);
       }
     }
     // Brighter highlights on the top edge of each cobble.
     ctx.fillStyle = "rgba(160,180,255,0.25)";
-    for (let by = 0; by < TILE; by += 8) {
+    for (let by = 0; by < CELL_PX; by += 8) {
       const off = ((y + by) / 8) % 2 ? 8 : 0;
-      for (let bx = 0; bx < TILE + 8; bx += 16) {
-        ctx.fillRect(x + ((bx + off) % TILE), y + by, 14, 1);
+      for (let bx = 0; bx < CELL_PX + 8; bx += 16) {
+        ctx.fillRect(x + ((bx + off) % CELL_PX), y + by, 14, 1);
       }
     }
     // Pixel mortar.
     ctx.fillStyle = "rgba(0,0,0,0.7)";
-    for (let by = 7; by < TILE; by += 8) ctx.fillRect(x, y + by, TILE, 1);
-    if (!(mask & 1)) { ctx.fillStyle = "rgba(220,230,255,0.22)"; ctx.fillRect(x, y, TILE, 1); }
-    if (!(mask & 8)) { ctx.fillStyle = "rgba(220,230,255,0.18)"; ctx.fillRect(x, y, 1, TILE); }
-    if (!(mask & 4)) { ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(x, y + TILE - 1, TILE, 1); }
-    if (!(mask & 2)) { ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x + TILE - 1, y, 1, TILE); }
+    for (let by = 7; by < CELL_PX; by += 8) ctx.fillRect(x, y + by, CELL_PX, 1);
+    if (!(mask & 1)) { ctx.fillStyle = "rgba(220,230,255,0.22)"; ctx.fillRect(x, y, CELL_PX, 1); }
+    if (!(mask & 8)) { ctx.fillStyle = "rgba(220,230,255,0.18)"; ctx.fillRect(x, y, 1, CELL_PX); }
+    if (!(mask & 4)) { ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(x, y + CELL_PX - 1, CELL_PX, 1); }
+    if (!(mask & 2)) { ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x + CELL_PX - 1, y, 1, CELL_PX); }
   }
 
   _drawEntity(ctx, e, frame) {
@@ -423,7 +426,7 @@ export class Render {
   }
 
   _drawWeapon(ctx, e, frame) {
-    const cx = e.x + TILE/2, cy = e.y + TILE/2;
+    const cx = e.x + CELL_PX/2, cy = e.y + CELL_PX/2;
     if (e.monster) {
       ctx.fillStyle = "#ff7a2a";
       ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2); ctx.fill();
@@ -442,27 +445,27 @@ export class Render {
 
   _drawDoor(ctx, e) {
     ctx.fillStyle = "#caa54f";
-    ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
+    ctx.fillRect(e.x+2, e.y+2, CELL_PX-4, CELL_PX-4);
     ctx.fillStyle = "#7a5b1f";
-    for (let i = 4; i < TILE-4; i += 4) ctx.fillRect(e.x+i, e.y+4, 1, TILE-8);
+    for (let i = 4; i < CELL_PX-4; i += 4) ctx.fillRect(e.x+i, e.y+4, 1, CELL_PX-8);
     if (e.opening) {
       const f = Math.min(0.95, 1 - e.opening/(e.type.openSpeed));
       ctx.fillStyle = `rgba(0,0,0,${f})`;
-      ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
+      ctx.fillRect(e.x+2, e.y+2, CELL_PX-4, CELL_PX-4);
     }
   }
 
   _drawExit(ctx, e, frame) {
     const img = this.assets.images.exit;
     if (img && img.naturalWidth) {
-      ctx.drawImage(img, 0, 0, img.width, img.height, e.x, e.y, TILE, TILE);
+      ctx.drawImage(img, 0, 0, img.width, img.height, e.x, e.y, CELL_PX, CELL_PX);
     } else {
       ctx.fillStyle = "#1c8a4a";
-      ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
+      ctx.fillRect(e.x+2, e.y+2, CELL_PX-4, CELL_PX-4);
     }
     const s = 0.5 + 0.5*Math.sin(frame * 0.2);
     ctx.fillStyle = `rgba(60,200,140,${0.35*s})`;
-    ctx.fillRect(e.x, e.y, TILE, TILE);
+    ctx.fillRect(e.x, e.y, CELL_PX, CELL_PX);
   }
 
   _drawTreasure(ctx, e, frame) {
@@ -473,10 +476,10 @@ export class Render {
       const fw = sw === 72 ? 24 : 16;
       const fh = sh === 24 && sw > 24 ? 24 : Math.min(sh, 16);
       const f = (sw / fw) > 1 ? Math.floor(frame / 10) % Math.floor(sw / fw) : 0;
-      ctx.drawImage(img, f*fw, 0, fw, fh, e.x, e.y, TILE, TILE);
+      ctx.drawImage(img, f*fw, 0, fw, fh, e.x, e.y, CELL_PX, CELL_PX);
     } else {
       ctx.fillStyle = "#ffcc33";
-      ctx.fillRect(e.x+8, e.y+8, TILE-16, TILE-16);
+      ctx.fillRect(e.x+8, e.y+8, CELL_PX-16, CELL_PX-16);
     }
   }
 
@@ -490,33 +493,33 @@ export class Render {
     if (img && img.naturalWidth) {
       const dirRow = Math.min(sheet.rows - 1, mapDirToRow(e.dir, sheet.rows));
       const animCol = Math.floor((frame + e.df) / 6) % sheet.cols;
-      ctx.drawImage(img, animCol * SP, dirRow * SP, SP, SP, e.x + (TILE-SP)/2, e.y + (TILE-SP)/2, SP, SP);
+      ctx.drawImage(img, animCol * SP, dirRow * SP, SP, SP, e.x + (CELL_PX-SP)/2, e.y + (CELL_PX-SP)/2, SP, SP);
     } else {
       ctx.fillStyle = monsterColor(e.type.key);
-      ctx.fillRect(e.x+4, e.y+4, TILE-8, TILE-8);
+      ctx.fillRect(e.x+4, e.y+4, CELL_PX-8, CELL_PX-8);
     }
     if (e.health < e.type.health) {
-      const w = (TILE-4) * (e.health / e.type.health);
-      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(e.x+2, e.y, TILE-4, 2);
+      const w = (CELL_PX-4) * (e.health / e.type.health);
+      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(e.x+2, e.y, CELL_PX-4, 2);
       ctx.fillStyle = "#f33"; ctx.fillRect(e.x+2, e.y, w, 2);
     }
   }
 
   _drawGenerator(ctx, e, frame) {
-    // "drone" generator → egg-cluster (ghostGen sprite); other monster
-    // generators → hive node / synthetic fabricator (monsterGen sprite).
-    const isEggCluster = e.mtype.key === "drone";
-    const img = this.assets.images[isEggCluster ? "ghostGen" : "monsterGen"];
+    // Ghost generators use the dedicated ghost-generator sprite; every other
+    // monster type uses the stone-cage generator.
+    const isGhost = e.mtype.key === "ghost";
+    const img = this.assets.images[isGhost ? "ghostGen" : "monsterGen"];
     const stage = Math.max(0, 2 - Math.floor(3 * (e.health / (e.maxHealth + 1))));
     if (img && img.naturalWidth) {
-      ctx.drawImage(img, stage * SP, 0, SP, SP, e.x + (TILE-SP)/2, e.y + (TILE-SP)/2, SP, SP);
+      ctx.drawImage(img, stage * SP, 0, SP, SP, e.x + (CELL_PX-SP)/2, e.y + (CELL_PX-SP)/2, SP, SP);
     } else {
       ctx.fillStyle = ["#822","#a44","#f66"][stage] || "#a44";
-      ctx.fillRect(e.x+2, e.y+2, TILE-4, TILE-4);
+      ctx.fillRect(e.x+2, e.y+2, CELL_PX-4, CELL_PX-4);
     }
     const s = 0.4 + 0.4*Math.sin(frame * 0.25);
     ctx.fillStyle = `rgba(255,80,40,${0.18 * s})`;
-    ctx.fillRect(e.x, e.y, TILE, TILE);
+    ctx.fillRect(e.x, e.y, CELL_PX, CELL_PX);
   }
 
   _drawFx(ctx, e, frame) {
@@ -525,10 +528,10 @@ export class Render {
     if (img && img.naturalWidth) {
       const fw = 16, fh = 16;
       const f = Math.min(2, e.frame);
-      ctx.drawImage(img, f*fw, 0, fw, fh, e.x + (TILE-fw)/2, e.y + (TILE-fh)/2, fw*1.5, fh*1.5);
+      ctx.drawImage(img, f*fw, 0, fw, fh, e.x + (CELL_PX-fw)/2, e.y + (CELL_PX-fh)/2, fw*1.5, fh*1.5);
     } else {
       ctx.fillStyle = `rgba(255,200,80,${1 - e.frame/6})`;
-      ctx.beginPath(); ctx.arc(e.x+TILE/2, e.y+TILE/2, 4 + e.frame*3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(e.x+CELL_PX/2, e.y+CELL_PX/2, 4 + e.frame*3, 0, Math.PI*2); ctx.fill();
     }
   }
 
@@ -539,11 +542,11 @@ export class Render {
     if (p.hurting > 0) {
       const a = 0.3 * (p.hurting / (FPS/2));
       ctx.fillStyle = `rgba(255,40,40,${a})`;
-      ctx.fillRect(p.x-2, p.y-2, TILE+4, TILE+4);
+      ctx.fillRect(p.x-2, p.y-2, CELL_PX+4, CELL_PX+4);
     } else if (p.healing > 0) {
       const a = 0.3 * (p.healing / (FPS/2));
       ctx.fillStyle = `rgba(80,255,140,${a})`;
-      ctx.fillRect(p.x-2, p.y-2, TILE+4, TILE+4);
+      ctx.fillRect(p.x-2, p.y-2, CELL_PX+4, CELL_PX+4);
     }
 
     if (img && img.naturalWidth) {
@@ -553,10 +556,10 @@ export class Render {
       else if (p.firing) col = (Math.floor(frame / 4) % 3) + 1;
       else if (p.moveDir >= 0) col = 1 + (Math.floor((frame + p.df) / 6) % Math.max(1, sheet.cols - 2));
       else col = 0;
-      ctx.drawImage(img, col * SP, dirRow * SP, SP, SP, p.x + (TILE-SP)/2, p.y + (TILE-SP)/2, SP, SP);
+      ctx.drawImage(img, col * SP, dirRow * SP, SP, SP, p.x + (CELL_PX-SP)/2, p.y + (CELL_PX-SP)/2, SP, SP);
     } else {
       ctx.fillStyle = p.type.color;
-      ctx.fillRect(p.x+4, p.y+4, TILE-8, TILE-8);
+      ctx.fillRect(p.x+4, p.y+4, CELL_PX-8, CELL_PX-8);
     }
 
     // No in-world player tag. The cabinet identifies players by colour /
@@ -676,7 +679,7 @@ export class Render {
     // Entity dots — exits, generators, treasures, monsters
     for (const e of level.entities) {
       if (e.dead) continue;
-      const tx = Math.floor(e.x / TILE), ty = Math.floor(e.y / TILE);
+      const tx = Math.floor(e.x / CELL_PX), ty = Math.floor(e.y / CELL_PX);
       if (tx < 0 || ty < 0 || tx >= tw || ty >= th) continue;
       let col = null;
       if (e.exit)            col = "#3afa6a";
@@ -695,7 +698,7 @@ export class Render {
     // out against monster dots.
     for (const p of players) {
       if (!p.joined || p.dead) continue;
-      const tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
+      const tx = Math.floor(p.x / CELL_PX), ty = Math.floor(p.y / CELL_PX);
       if (tx < 0 || ty < 0 || tx >= tw || ty >= th) continue;
       const dotPx = Math.max(2, pxPerTile + 1);
       const px = sx(x0Native + tx * pxPerTile - 0.5);
@@ -763,9 +766,9 @@ export class Render {
   }
 
   _drawSidebarLogo(ctx, x, y, w, h) {
-    // NOSTROMO wordmark rendered with the ROM bitmap font + a red shadow
+    // GAUNTLET wordmark rendered with the ROM bitmap font + a red shadow
     // underlay. We size it to fill the panel slot.
-    const text = "NOSTROMO";
+    const text = "GAUNTLET";
     // Pick the largest scale that lets the wordmark fit in `w`.
     let scale = 1;
     for (let s = 8; s >= 1; s--) {

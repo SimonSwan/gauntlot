@@ -1,55 +1,56 @@
 // Asset loader: pre-loads images, level PNGs, and audio.
 //
-// Sprite paths point at the Nostromo placeholder atlas. When the user drops
-// the real sprite-sheet PNG in, replace the files in assets/nostromo/ —
-// no code change needed.
+// Sprite paths now come from the original Atari Gauntlet sprite set
+// (mbeisser1/gauntlet_mame_gfx, MIT) shipped in assets/sprites/. Keys here
+// match HEROES[].id and MONSTER_TYPES[].key in constants.js so render.js can
+// look them up by entity type.
 
 const IMAGE_LIST = {
-  // Heroes
-  marine:        "assets/nostromo/player-marine-sprite-sheet.png",
-  tech:          "assets/nostromo/player-tech-sprite-sheet.png",
-  smuggler:      "assets/nostromo/player-smuggler-sprite-sheet.png",
-  synthetic:     "assets/nostromo/player-synthetic-sprite-sheet.png",
+  // Heroes (CONFIRMED frame layouts — see HEROES[] in constants.js)
+  warrior:       "assets/sprites/player-warrior-sprite-sheet.png",
+  valkyrie:      "assets/sprites/player-valkyrie-sprite-sheet.png",
+  wizard:        "assets/sprites/player-wizard-sprite-sheet.png",
+  elf:           "assets/sprites/player-elf-sprite-sheet.png",
 
-  // Xenomorph enemies (occupying the ghost/demon/grunt/lobber/death gameplay slots)
-  drone:         "assets/nostromo/monster-drone-sprite-sheet.png",
-  spitter:       "assets/nostromo/monster-spitter-sprite-sheet.png",
-  runner:        "assets/nostromo/monster-runner-sprite-sheet.png",
-  praetorian:    "assets/nostromo/monster-praetorian-sprite-sheet.png",
-  protoXeno:     "assets/nostromo/monster-protoXeno-sprite-sheet.png",
+  // Monsters — keys match MONSTER_TYPES[].key
+  ghost:         "assets/sprites/monster-ghost1-sprite-sheet.png",
+  demon:         "assets/sprites/monster-demon1-sprite-sheet.png",
+  grunt:         "assets/sprites/monster-grunt1-sprite-sheet.png",
+  sorcerer:      "assets/sprites/monster-sorcerer1-sprite-sheet.png",
+  lobber:        "assets/sprites/monster-lobber1-sprite-sheet.png",
+  death:         "assets/sprites/monster-death.png",
+  thief:         "assets/sprites/monster-thief-sprite-sheet.png",
 
-  // Synthetic enemies (sorcerer + thief slots)
-  synthSecurity: "assets/nostromo/monster-synthSecurity-sprite-sheet.png",
-  workerAndroid: "assets/nostromo/monster-workerAndroid-sprite-sheet.png",
-
-  // Generators (re-use existing arcade gen sprites for now)
+  // Generators
   ghostGen:      "assets/sprites/monster-ghost-generator.png",
   monsterGen:    "assets/sprites/monster-monster-generator.png",
 
-  // Pickups
-  medkit:        "assets/nostromo/pickup-medkit.png",
-  ammo:          "assets/nostromo/pickup-ammo.png",
-  oxygen:        "assets/nostromo/pickup-oxygen.png",
-  adrenaline:    "assets/nostromo/pickup-adrenaline.png",
-  accessCard:    "assets/nostromo/pickup-accessCard.png",
-  emp:           "assets/nostromo/pickup-emp.png",
-  credits:       "assets/nostromo/pickup-credits.png",
-  dataCore:      "assets/nostromo/pickup-dataCore.png",
-  poison:        "assets/nostromo/pickup-poison.png",
+  // Pickups (keys match TREASURE_TYPES[].key)
+  health:        "assets/sprites/dungeon-potion-blue.png",
+  poison:        "assets/sprites/dungeon-potion-orange.png",
+  food1:         "assets/sprites/dungeon-food-turkey.png",
+  food2:         "assets/sprites/dungeon-food-ham.png",
+  food3:         "assets/sprites/dungeon-food-drumstick.png",
+  key:           "assets/sprites/dungeon-key.png",
+  potion:        "assets/sprites/dungeon-potion-blue.png",
+  gold:          "assets/sprites/dungeon-treasure-bag.png",
+  chest:         "assets/sprites/dungeon-treasure-chest-sprite-sheet.png",
 
   // Doors / exits
   exit:          "assets/sprites/dungeon-exit.png",
+  exit_to_4:     "assets/sprites/dungeon-exit-to-4.png",
+  exit_to_8:     "assets/sprites/dungeon-exit-to-8.png",
 
   // FX
   explosion:     "assets/sprites/explosion-collision-sprite-sheet.png",
 
-  // ROM-extracted bitmap font (kept — same alphabet)
+  // ROM-extracted bitmap font
   textAlphabet:        "assets/sprites/text-an-alphabet.png",
   textAlphabetLarge:   "assets/sprites/text-an-alphabet-large-0-9A.png",
 
-  // Sci-fi tile atlas (procedurally generated for now; same 16x8 layout
-  // as the Gauntlet backgrounds.png so render.js's mask math works).
-  backgrounds:    "assets/nostromo/tiles.png",
+  // Wall / floor tile atlas — original Atari Gauntlet ROM-extracted
+  // (16 cols × 8 rows of 32×32 cells; see render.js for wall-mask math).
+  backgrounds:   "assets/sprites/backgrounds.png",
 };
 
 const SOUND_LIST = {

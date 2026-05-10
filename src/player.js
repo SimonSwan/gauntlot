@@ -1,6 +1,6 @@
 // Player: one of four heroes, controlled by a single input slot.
 import {
-  TILE, FPS, DIR, DIR_VEC, CBOX,
+  CELL_PX, FPS, DIR, DIR_VEC, CBOX,
   SLIDE_DIRECTIONS, AUTO_HURT_FRAMES,
 } from "./constants.js";
 import { Weapon, Fx } from "./entities.js";
@@ -163,7 +163,7 @@ export class Player {
 
   _nuke(level) {
     // Damages all monsters within `magic` tiles
-    const limit = TILE * this.type.magic;
+    const limit = CELL_PX * this.type.magic;
     for (const e of level.entities) {
       if (!e.monster || e.dead) continue;
       const dx = Math.abs(e.x - this.x), dy = Math.abs(e.y - this.y);
@@ -193,9 +193,8 @@ export class Player {
       const t = performance.now();
       if (t - this.lastWeakAnnounce > 8000) {
         this.lastWeakAnnounce = t;
-        // "Marine needs ammo, badly!" — Nostromo flavour of the iconic
-        // Gauntlet weak-health voice cue.
-        this.level?.game?.sounds.say(`${this.type.key} needs ammo, badly!`, { cooldown: 8000 });
+        // The iconic Gauntlet weak-health voice cue.
+        this.level?.game?.sounds.say(`${this.type.key} needs food, badly!`, { cooldown: 8000 });
       }
     }
   }
@@ -211,7 +210,7 @@ export class Player {
     // Release cell occupancy so monsters don't pile up on the corpse tile.
     this.level?._removeFromCells(this);
     this.level?.game?.sounds.play("gameover", 0.5);
-    this.level?.game?.sounds.say(`Crewman ${this.type.key} is down!`, { cooldown: 4000 });
+    this.level?.game?.sounds.say(`${this.type.key} has died!`, { cooldown: 4000 });
   }
 }
 
