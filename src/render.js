@@ -240,6 +240,8 @@ export class Render {
     const S = this.scale;
     for (const e of mgr.entities) {
       if (!(e instanceof Projectile) || e.dead) continue;
+      if (e.owner === "player" && e.heroId && this._drawPlayerShot(e, S)) continue;
+      // Fallback / monster shot — small circle
       const sx = this.viewX + (e.wx + 4) * S - this.cameraX;
       const sy = this.viewY + (e.wy + 4) * S - this.cameraY;
       const r  = 3 * S;
@@ -248,6 +250,37 @@ export class Render {
       ctx.fillStyle = "rgba(255,255,255,0.85)";
       ctx.beginPath(); ctx.arc(sx, sy, r/2, 0, Math.PI*2); ctx.fill();
     }
+  }
+
+  /**
+   * Draw a player's weapon projectile using its per-hero sprite sheet.
+   * CONFIRMED per SPRITE_FRAMES.md (clockwise dir rows):
+   *   warrior  256×16  16 frames spin: col = (ageMs/50) % 16, row 0
+   *   valkyrie 128×16   8 static dirs: col = dir,             row 0
+   *   elf      128×16   8 static dirs: col = dir,             row 0
+   *   wizard   128×32   8 dirs × 2 rows pulse: col = dir, row = (ageMs/80) % 2
+   * Drawn 2× source size, centred on the projectile.
+   * @returns {boolean} true if the sprite was drawn (caller skips fallback)
+   */
+  _drawPlayerShot(e, S) {
+    const img = Assets.img[`${e.heroId}_weapon`];
+    if (!img || !img.complete) return false;
+    const fw = 16, fh = 16;
+    const cols = Math.max(1, Math.floor(img.naturalWidth  / fw));
+    const rows = Math.max(1, Math.floor(img.naturalHeight / fh));
+    let col = 0, row = 0;
+    const dir = (e.dir | 0) % 8;
+    switch (e.heroId) {
+      case 'warrior': col = Math.floor((e.ageMs | 0) / 50) % cols; row = 0; break;
+      case 'wizard':  col = Math.min(dir, cols - 1); row = Math.floor((e.ageMs | 0) / 80) % rows; break;
+      default:        col = Math.min(dir, cols - 1); row = 0;  // valkyrie / elf — static
+    }
+    const drawW = fw * 2 * S, drawH = fh * 2 * S;
+    const sx = this.viewX + (e.wx + 4) * S - this.cameraX - drawW / 2 + 4 * S;
+    const sy = this.viewY + (e.wy + 4) * S - this.cameraY - drawH / 2 + 4 * S;
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.drawImage(img, col * fw, row * fh, fw, fh, sx, sy, drawW, drawH);
+    return true;
   }
 
   _drawPlayers(players) {
@@ -281,9 +314,12 @@ export class Render {
       if (!(e instanceof Fx) || e.dead) continue;
       const sx = this.viewX + e.wx * S - this.cameraX;
       const sy = this.viewY + e.wy * S - this.cameraY;
-      const img = Assets.img.explosion;
+      // Lobber impacts use the dedicated shrapnel sheet; everything else
+      // uses the generic collision explosion (3 frames, ~100ms/frame).
+      const key = e.fxType === 'lobber_explosion' ? 'lobber_expl' : 'collision_expl';
+      const img = Assets.img[key];
       if (img) {
-        const f = Math.min(2, e.frame || 0);
+        const f = Math.min(2, (e.animFrame ?? e.frame ?? 0) | 0);
         ctx.drawImage(img, f * 16, 0, 16, 16, sx, sy, sprite, sprite);
       } else {
         ctx.fillStyle = `rgba(255,200,80,0.7)`;

@@ -14,7 +14,7 @@
 import { Assets }      from "./assets.js";
 import { Input }       from "./input.js";
 import { LevelLoader, T } from "./level.js";
-import { EntityManager, Monster, Projectile, Generator } from "./entities.js";
+import { EntityManager, Monster, Projectile, Generator, Fx } from "./entities.js";
 import { Player }      from "./player.js";
 import { Render }      from "./render.js";
 import { Sounds }      from "./sounds.js";
@@ -331,8 +331,11 @@ export class Game {
     }
 
     // 4. Projectiles hit monsters / players
+    //    Lobber shots use the dedicated shrapnel explosion sprite on impact;
+    //    everything else uses the generic collision explosion (3 frames).
     for (const e of this.mgr.entities) {
       if (!(e instanceof Projectile) || e.dead) continue;
+      const impactFx = e.isLobbed ? 'lobber_explosion' : 'explosion';
       if (e.owner === "player") {
         for (const m of this.mgr.entities) {
           if (!(m instanceof Monster) || m.dead) continue;
@@ -344,6 +347,7 @@ export class Game {
               Sounds.play(`monsterdeath${1 + (Math.random()*3|0)}`, 0.3);
             }
             e.dead = true;
+            this.mgr.add(new Fx(e.wx, e.wy, impactFx));
             break;
           }
         }
@@ -360,6 +364,7 @@ export class Game {
                 Sounds.play("generatordeath", 0.5);
               }
               e.dead = true;
+              this.mgr.add(new Fx(e.wx, e.wy, impactFx));
               break;
             }
           }
@@ -370,6 +375,7 @@ export class Game {
           if (e.overlaps(p, 12)) {
             p.hurt(e.damage || 5);
             e.dead = true;
+            this.mgr.add(new Fx(e.wx, e.wy, impactFx));
             break;
           }
         }

@@ -393,14 +393,19 @@ export class Projectile extends Entity {
    * @param {string}  owner    'player' or 'monster'
    * @param {number}  damage   HP damage on hit
    * @param {boolean} isLobbed True for lobber arcing shots (unused currently)
+   * @param {string|null} heroId  Hero id ('warrior'/'valkyrie'/'elf'/'wizard') for sprite pick
+   * @param {number}  dir      Firing direction (0-7, clockwise from S)
    */
-  constructor(wx, wy, vx, vy, owner, damage, isLobbed = false) {
+  constructor(wx, wy, vx, vy, owner, damage, isLobbed = false, heroId = null, dir = 0) {
     super(wx, wy);
     this.vx       = vx;
     this.vy       = vy;
     this.owner    = owner;
     this.damage   = damage;
     this.isLobbed = isLobbed;
+    this.heroId   = heroId;
+    this.dir      = dir;
+    this.ageMs    = 0;
     this.lifetime = 3000; // ms before auto-removal  [PLACEHOLDER]
   }
 
@@ -411,6 +416,7 @@ export class Projectile extends Entity {
   update(dt, level) {
     this.wx += this.vx * dt;
     this.wy += this.vy * dt;
+    this.ageMs   += dt;
     this.lifetime -= dt;
     if (this.lifetime <= 0) { this.dead = true; return; }
 

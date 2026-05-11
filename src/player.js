@@ -131,6 +131,8 @@ export class Player {
         "player",
         DMG.PLAYER_SHOT,
         false,
+        this.hero.id,
+        this.dir,
       ));
       this.shotCd = 300 / (this.hero.shotSpeed || 1);
       this._didFire = true;     // game.js consumes this flag for SFX
