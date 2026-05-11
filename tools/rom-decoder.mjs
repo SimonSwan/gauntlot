@@ -325,9 +325,10 @@ function readWord(cpu, addr) {
 }
 
 function decodeLevel(cpu, levelPtr) {
-  // levelPtr is a 16-bit offset within the Slapstic region.
-  // Physical address = 0x038000 + levelPtr
-  const base = 0x038000 + levelPtr;
+  // levelPtr is the low 16 bits of a 32-bit ROM address whose high word is
+  // $0003. The physical CPU address is therefore $03xxxx. (Earlier comments
+  // said $038000 + ptr but that landed in the wrong ROM region.)
+  const base = 0x030000 + levelPtr;
 
   // 14-byte header
   const hdr = cpu.slice(base, base + 14);
@@ -428,41 +429,29 @@ const WALL_BLOCK_MIN = 4;
 const MAX_GENERATORS = 3;
 
 function postProcessGrid(grid) {
-  const out = new Uint8Array(grid);
   const N = 32;
-  const isEntity = (c) =>
-    (c >= 0x09 && c <= 0x27) || c === 0x2A;
+  const out = new Uint8Array(N * N);
   const isWalkable = (c) =>
     c === 0x00 || (c >= 0x3C && c <= 0x3F) || c === 0x05;
 
-  // Step 1: flood-fill same-coded entity cells; large components → wall.
-  const seen  = new Uint8Array(N * N);
-  const stack = new Int32Array(N * N);
+  // ── Step 1: detect the level's FLOOR code by occurrence frequency.
+  //
+  // Each level's RLE body uses 4 per-level P-codes; one is the maze's floor,
+  // the others are wall variants. The floor code is the most-frequent in the
+  // decoded grid (real Gauntlet mazes are ~55-70% floor by area).
+  const counts = new Map();
   for (let i = 0; i < N * N; i++) {
-    if (seen[i]) continue;
     const c = grid[i];
-    if (!isEntity(c)) continue;
-    let sp = 0;
-    stack[sp++] = i; seen[i] = 1;
-    const cells = [];
-    while (sp) {
-      const off = stack[--sp];
-      cells.push(off);
-      const y = (off / N) | 0, x = off - y * N;
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
-        const no = ny * N + nx;
-        if (seen[no] || grid[no] !== c) continue;
-        seen[no] = 1; stack[sp++] = no;
-      }
-    }
-    if (cells.length >= WALL_BLOCK_MIN) {
-      for (const o of cells) out[o] = 0x01;
-    } else {
-      // Keep small clumps as ghost generator L1 — playable spawner.
-      for (const o of cells) out[o] = 0x19;
-    }
+    counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  let floorCode = 0x00, floorFreq = 0;
+  for (const [c, n] of counts) {
+    if (n > floorFreq) { floorFreq = n; floorCode = c; }
+  }
+
+  // ── Step 2: remap. Floor code → floor ($00). Everything else → wall ($01).
+  for (let i = 0; i < N * N; i++) {
+    out[i] = grid[i] === floorCode ? 0x00 : 0x01;
   }
 
   // Step 2: collect walkable cells (excluding edge ring so things sit cleanly)
