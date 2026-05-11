@@ -321,12 +321,31 @@ export class Game {
     // 2. Entities (monsters, generators, projectiles, fx)
     this.mgr.update(dt, this.level, this.players);
 
-    // 3. Collisions: monsters touch players
+    // 3. Monster-player contact.
+    //    GHOST + DEATH: drift through the player dealing damage (no push-back,
+    //    no physical block).
+    //    Everything else: damage + push-back so the player can't walk through
+    //    a melee enemy.
+    //    THIEF: also steals a key or potion (in that order) on each contact.
     for (const e of this.mgr.entities) {
       if (!(e instanceof Monster) || e.dead) continue;
       for (const p of this.players) {
         if (!p.joined || p.dead) continue;
-        if (e.overlaps(p, 10)) p.hurt(e.meleeDamage);
+        const ddx = p.cx - e.cx;
+        const ddy = p.cy - e.cy;
+        const dist = Math.sqrt(ddx*ddx + ddy*ddy);
+        if (dist > 12) continue;
+        p.hurt(e.meleeDamage);
+        if (e.monType === MON.THIEF) {
+          if      (p.keys    > 0) p.keys--;
+          else if (p.potions > 0) p.potions--;
+        }
+        if (e.monType !== MON.GHOST && e.monType !== MON.DEATH && dist < 10) {
+          const len  = dist || 1;
+          const push = 10 - dist;
+          p.wx = Math.max(0, Math.min(31*16, p.wx + (ddx/len) * push));
+          p.wy = Math.max(0, Math.min(31*16, p.wy + (ddy/len) * push));
+        }
       }
     }
 
