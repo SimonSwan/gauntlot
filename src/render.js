@@ -135,8 +135,11 @@ export class Render {
           if (floor) ctx.drawImage(floor, sx, sy, C, C);
           else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           if (tile.locked) {
-            const key = tile.type === T.GATE_H ? "gate_h" : "gate_v";
-            const img = Assets.img[key];
+            // Prefer the ROM-extracted arcade gate stamps; fall back to the
+            // legacy fan-art sprites if the ROM build hasn't run.
+            const key = tile.type === T.GATE_H ? "arcade_gate_h" : "arcade_gate_v";
+            const legacy = tile.type === T.GATE_H ? "gate_h" : "gate_v";
+            const img = Assets.img[key] || Assets.img[legacy];
             if (img) ctx.drawImage(img, sx, sy, C, C);
             else {
               ctx.fillStyle = PALETTE.gate;
