@@ -93,11 +93,6 @@ const IMAGE_MANIFEST = [
   { key: 'arcade_wall',      file: 'sprites/arcade-wall.png' },        // 16×16px
   { key: 'arcade_wall_body', file: 'sprites/arcade-wall-body.png' },   // 16×16px
   { key: 'arcade_floor',     file: 'sprites/arcade-floor.png' },       // 16×16px
-  // Gate sprites — ROM-extracted via MAME MOB RAM dump.
-  // Horizontal: code 0x1d48 (Level 1 row 21 horizontal gate, captured live).
-  // Vertical:   code 0x1d94 (Level 4 vertical gates, same color-0 palette).
-  { key: 'arcade_gate_h',    file: 'sprites/arcade-gate-h.png' },      // 16×16px
-  { key: 'arcade_gate_v',    file: 'sprites/arcade-gate-v.png' },      // 16×16px
 
   // ── Gate sprites ───────────────────────────────────────────────────────────
   // Extracted from all-monster.png (row 2, right section) by setup-assets.mjs.

@@ -135,11 +135,11 @@ export class Render {
           if (floor) ctx.drawImage(floor, sx, sy, C, C);
           else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           if (tile.locked) {
-            // Prefer the ROM-extracted arcade gate stamps; fall back to the
-            // legacy fan-art sprites if the ROM build hasn't run.
-            const key = tile.type === T.GATE_H ? "arcade_gate_h" : "arcade_gate_v";
-            const legacy = tile.type === T.GATE_H ? "gate_h" : "gate_v";
-            const img = Assets.img[key] || Assets.img[legacy];
+            // Use the existing legacy chain-link gate sprite from backgrounds.png
+            // (gate-horizontal.png / gate-vertical.png).  My earlier MAME MOB
+            // extraction picked up the wrong tile codes — reverting.
+            const key = tile.type === T.GATE_H ? "gate_h" : "gate_v";
+            const img = Assets.img[key];
             if (img) ctx.drawImage(img, sx, sy, C, C);
             else {
               ctx.fillStyle = PALETTE.gate;
@@ -215,8 +215,19 @@ export class Render {
       const sy = this.viewY + e.wy * S - this.cameraY;
       const img = Assets.img[e.itemKind];
       if (img) {
-        // Most items are 16x16; food/treasure are 24x24 — scale to one tile.
-        ctx.drawImage(img, sx, sy, C, C);
+        // Some item assets are sprite SHEETS (multiple animation frames laid
+        // out horizontally).  We were calling drawImage(img, sx, sy, C, C)
+        // which scales the whole sheet into one cell — that's why the
+        // treasure chest was showing 3 frames squashed side-by-side.
+        // Detect a sheet by aspect ratio and draw just the first frame.
+        const sw = img.naturalWidth || img.width;
+        const sh = img.naturalHeight || img.height;
+        if (sw > sh * 1.5) {
+          // Wider-than-tall == sprite sheet of horizontal frames; frame size = sh × sh.
+          ctx.drawImage(img, 0, 0, sh, sh, sx, sy, C, C);
+        } else {
+          ctx.drawImage(img, sx, sy, C, C);
+        }
       } else {
         ctx.fillStyle = PALETTE.item;
         ctx.fillRect(sx + 2 * S, sy + 2 * S, C - 4 * S, C - 4 * S);
