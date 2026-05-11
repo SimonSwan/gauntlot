@@ -220,7 +220,12 @@ export class Render {
       if (img) {
         const cols = Math.floor(img.naturalWidth  / SPRPX);
         const rows = Math.floor(img.naturalHeight / SPRPX);
-        const row  = Math.min(rows - 1, e.dir | 0);
+        // Lobber: only 5 direction rows (S, E, N, W, ?), map 8 dirs onto 4
+        // cardinals by collapsing diagonals — HYPOTHESIS per SPRITE_FRAMES.md.
+        const dir  = e.dir | 0;
+        const row  = (e.monType === MON.LOBBER)
+          ? [0,0,1,1,2,2,3,3][dir] ?? 0
+          : Math.min(rows - 1, dir);
         const col  = Math.min(cols - 1, e.animFrame | 0);
         ctx.drawImage(img, col * SPRPX, row * SPRPX, SPRPX, SPRPX, sx, sy, sprite, sprite);
       } else {

@@ -32,6 +32,9 @@ export class Player {
     this.dir       = DIR.S;
     this.animFrame = 0;
     this.animTimer = 0;
+    this.walkFrame      = 0; // 0 or 1 — walk cycle frame (cols 1-2)
+    this.shootAnimFrame = 0; // 0..N — shoot animation progress (cols 3..)
+    this.shooting       = false;
     this.shotCd    = 0;
     this.invuln    = 0;
     this.drainAcc  = 0;
@@ -105,17 +108,19 @@ export class Player {
       else if (dy ===  1)              this.dir = DIR.S;
       else if (dy === -1)              this.dir = DIR.N;
 
-      // Anim
+      // Walk anim — cycle through walk cols 1-2 (CONFIRMED col 0 = idle pose)
       this.animTimer += dt;
       if (this.animTimer >= TIME.ANIM_FRAME_MS) {
         this.animTimer -= TIME.ANIM_FRAME_MS;
-        this.animFrame = (this.animFrame + 1) % Math.max(1, this.hero.frameCols);
+        this.walkFrame = (this.walkFrame + 1) % 2;
       }
     } else {
-      this.animFrame = 0;
+      this.walkFrame = 0;
+      this.animTimer = 0;
     }
 
     // ── Shoot ───────────────────────────────────────────────────────────────
+    // shootAnimFrame drives the col 3..N pose; shotCd controls fire rate.
     if (cmd.shoot && this.shotCd <= 0) {
       const v = DIR_VEC[this.dir];
       const shotSpeed = TIME.PLAYER_SHOT_SPEED * (this.hero.shotSpeed || 1) / 1000;
@@ -129,7 +134,27 @@ export class Player {
       ));
       this.shotCd = 300 / (this.hero.shotSpeed || 1);
       this._didFire = true;     // game.js consumes this flag for SFX
+      this.shooting = true;
+      this.shootAnimFrame = 0;
+      this.shootAnimTimer = 0;
     }
+    if (this.shooting) {
+      this.shootAnimTimer = (this.shootAnimTimer || 0) + dt;
+      // Shoot cols are 3..(frameCols-1).  Advance one frame per ANIM_FRAME_MS.
+      const shootCols = Math.max(1, this.hero.frameCols - 3);
+      const idx = Math.floor(this.shootAnimTimer / TIME.ANIM_FRAME_MS);
+      if (idx >= shootCols) {
+        this.shooting = false;
+        this.shootAnimFrame = 0;
+      } else {
+        this.shootAnimFrame = idx;
+      }
+    }
+
+    // Final animFrame: shoot pose overrides walk/idle
+    if (this.shooting)         this.animFrame = 3 + this.shootAnimFrame;
+    else if (dx !== 0 || dy !== 0) this.animFrame = 1 + this.walkFrame;
+    else                            this.animFrame = 0;
 
     // ── Magic ───────────────────────────────────────────────────────────────
     if (cmd.magic && this.potions > 0) {

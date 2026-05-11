@@ -186,7 +186,7 @@ export const FLOOR_CODES = new Set([0x00, 0x3C, 0x3D, 0x3E, 0x3F]);  // CONFIRME
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const MON = Object.freeze({
-  GHOST:    0, // CONFIRMED – phased through walls, cannot fight, no shoot
+  GHOST:    0, // Wall-blocked like everything else; cannot fight, no shoot
   DEMON:    1, // CONFIRMED – fights + shoots projectiles
   GRUNT:    2, // CONFIRMED – fights only (walks through other grunts)
   SORCERER: 3, // CONFIRMED – fights only (can pass through walls? HYPOTHESIS)
@@ -261,7 +261,7 @@ export const TIME = Object.freeze({
   GEN_MAX_SPAWN: 99,
 
   // Monster walk speed in pixels per second  [PLACEHOLDER]
-  GHOST_SPEED_PX:    48,  // Ghosts move through walls
+  GHOST_SPEED_PX:    48,  // Ghosts are wall-blocked like every other monster
   GRUNT_SPEED_PX:    40,
   DEMON_SPEED_PX:    44,
   SORCERER_SPEED_PX: 36,
@@ -632,21 +632,24 @@ export const SCORE = Object.freeze({
 // 8 directions, 0 = South (facing toward player at screen start).
 // This maps to sprite sheet row ordering (HYPOTHESIS based on arcade convention).
 
+// CONFIRMED by visual inspection of warrior/grunt/ghost/demon sprite sheets:
+// rows are CLOCKWISE starting from South — S, SE, E, NE, N, NW, W, SW.
 export const DIR = Object.freeze({
-  S:  0, SW: 1, W:  2, NW: 3,
-  N:  4, NE: 5, E:  6, SE: 7,
+  S:  0, SE: 1, E:  2, NE: 3,
+  N:  4, NW: 5, W:  6, SW: 7,
 });
 
-// Direction → velocity vector (normalised to ±1)
+// Direction → velocity vector (normalised to ±1).  Index must match DIR.*
+// values above (same clockwise order).
 export const DIR_VEC = [
-  { dx:  0, dy:  1 },  // S
-  { dx: -1, dy:  1 },  // SW
-  { dx: -1, dy:  0 },  // W
-  { dx: -1, dy: -1 },  // NW
-  { dx:  0, dy: -1 },  // N
-  { dx:  1, dy: -1 },  // NE
-  { dx:  1, dy:  0 },  // E
-  { dx:  1, dy:  1 },  // SE
+  { dx:  0, dy:  1 },  // 0 S
+  { dx:  1, dy:  1 },  // 1 SE
+  { dx:  1, dy:  0 },  // 2 E
+  { dx:  1, dy: -1 },  // 3 NE
+  { dx:  0, dy: -1 },  // 4 N
+  { dx: -1, dy: -1 },  // 5 NW
+  { dx: -1, dy:  0 },  // 6 W
+  { dx: -1, dy:  1 },  // 7 SW
 ];
 
 // 4 cardinal directions for player movement

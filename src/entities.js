@@ -18,7 +18,8 @@
  *     2. Pick the axis with the larger component (preferred direction).
  *     3. If blocked, try the other axis (sliding).
  *     4. If both blocked, pick a random perpendicular direction.
- *   Ghosts ignore walls (pass through them).  CONFIRMED behaviour.
+ *   All monsters are wall-blocked.  (Previously ghosts phased through walls;
+ *   that has been removed — no ROM evidence for it.)
  *   Death cannot be killed by shots — only magic.  CONFIRMED behaviour.
  *
  * DAMAGE VALUES: All from ATT (attract-screen) analysis.  See constants.js.
@@ -141,11 +142,9 @@ export class Monster extends Entity {
     return (table[this.monType] ?? DMG.GRUNT)[this.level - 1];
   }
 
-  /**
-   * Can this monster walk through stone walls?
-   * Only Ghosts can.  CONFIRMED.
-   */
-  get canPhase() { return this.monType === MON.GHOST; }
+  // Ghost wall-phasing removed per user correction — no ROM evidence.
+  // All monsters are wall-blocked.  Kept for callers that still ask.
+  get canPhase() { return false; }
 
   /**
    * Can this monster be killed by player shots?
@@ -274,7 +273,7 @@ export class Monster extends Entity {
 
   /**
    * Try to move by (dx, dy) pixels.  Returns true if movement succeeded.
-   * Ghosts ignore walls.  Others are blocked by walls and locked gates.
+   * Every monster is blocked by walls and locked gates.
    * @private
    */
   _tryMove(dx, dy, level) {
@@ -282,14 +281,7 @@ export class Monster extends Entity {
     const ny = this.wy + dy;
     const nc = Math.floor((nx + 12) / 16);
     const nr = Math.floor((ny + 12) / 16);
-
-    if (this.canPhase) {
-      // Ghosts: only blocked by level boundaries
-      if (nc < 0 || nc >= 32 || nr < 0 || nr >= 32) return false;
-    } else {
-      if (level.isBlocked(nc, nr)) return false;
-    }
-
+    if (level.isBlocked(nc, nr)) return false;
     this.wx = nx;
     this.wy = ny;
     return true;
