@@ -23,7 +23,7 @@ const SPRPX = 24;     // sprite frame size in world px (equals CELL)
 //   canvas split 75% playfield / 25% scoreboard.
 //   playfield is a SCROLLING viewport of VIEW_TILES x VIEW_TILES (24, not 32).
 //   The camera follows the focused player; the maze is larger than the view.
-const VIEW_TILES = 24;
+const VIEW_TILES = 14;
 const HUD_FRACT  = 0.25;   // HUD is 25% of canvas width
 
 export class Render {
