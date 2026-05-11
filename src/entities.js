@@ -274,20 +274,21 @@ export class Monster extends Entity {
   /**
    * Try to move by (dx, dy) pixels.  Returns true if movement succeeded.
    * Every monster is blocked by walls and locked gates.
-   * Uses a 4-corner hitbox check (12x12 hitbox, 2-px margin inside the 16x16
-   * tile) so monsters can't get wedged into a corner where their centre is in
-   * a clear tile but a corner overlaps a wall.
+   *
+   * Uses the full 24x24 sprite extent as the collision hitbox: the renderer
+   * offsets the 24-px sprite by -(SPRPX-CELL)/2 = -4, so the sprite spans
+   * (wx-4 .. wx+20, wy-4 .. wy+20).  Checking those four corners against
+   * walls / locked gates means the sprite never visually overlaps a wall.
    * @private
    */
   _tryMove(dx, dy, level) {
     const nx = this.wx + dx;
     const ny = this.wy + dy;
-    const m  = 2;
     const corners = [
-      [nx + m,        ny + m       ],
-      [nx + 16 - m,   ny + m       ],
-      [nx + m,        ny + 16 - m  ],
-      [nx + 16 - m,   ny + 16 - m  ],
+      [nx -  4, ny -  4],
+      [nx + 20, ny -  4],
+      [nx -  4, ny + 20],
+      [nx + 20, ny + 20],
     ];
     for (const [px, py] of corners) {
       const c = Math.floor(px / 16);

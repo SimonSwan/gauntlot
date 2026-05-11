@@ -45,6 +45,29 @@ export class Player {
   get tileCol() { return Math.floor(this.cx / 16); }
   get tileRow() { return Math.floor(this.cy / 16); }
 
+  /**
+   * Would a 24x24 sprite at (wx, wy) overlap any wall / locked-gate tile?
+   * Sprite occupies world pixels (wx-4 .. wx+20, wy-4 .. wy+20) because the
+   * renderer offsets the 24-px sprite by -(SPRPX-CELL)/2 = -4 to centre it
+   * on the 16x16 tile.  Returns true if blocked.
+   * @private
+   */
+  _spriteBlocked(wx, wy, level) {
+    const corners = [
+      [wx -  4, wy -  4],
+      [wx + 20, wy -  4],
+      [wx -  4, wy + 20],
+      [wx + 20, wy + 20],
+    ];
+    for (const [px, py] of corners) {
+      const c = Math.floor(px / 16);
+      const r = Math.floor(py / 16);
+      if (c < 0 || c > 31 || r < 0 || r > 31) return true;
+      if (level.isBlocked(c, r)) return true;
+    }
+    return false;
+  }
+
   spawnAt(col, row) {
     this.wx = col * 16;
     this.wy = row * 16;
@@ -86,16 +109,17 @@ export class Player {
     if (cmd.down)  dy += 1;
 
     if (dx || dy) {
-      // Move X and Y independently so we can slide along walls
+      // 24x24 hitbox matching the rendered sprite extent (sprite is drawn at
+      // wx-4..wx+20, wy-4..wy+20).  Check all four sprite-corners against
+      // walls + locked gates so the sprite can never overlap a wall tile.
+      // X and Y are checked independently so we can slide along walls.
       if (dx !== 0) {
-        const nx   = this.wx + dx * move;
-        const ncol = Math.floor((nx + 12) / 16);
-        if (!level.isBlocked(ncol, this.tileRow)) this.wx = nx;
+        const nx = this.wx + dx * move;
+        if (!this._spriteBlocked(nx, this.wy, level)) this.wx = nx;
       }
       if (dy !== 0) {
-        const ny   = this.wy + dy * move;
-        const nrow = Math.floor((ny + 12) / 16);
-        if (!level.isBlocked(this.tileCol, nrow)) this.wy = ny;
+        const ny = this.wy + dy * move;
+        if (!this._spriteBlocked(this.wx, ny, level)) this.wy = ny;
       }
 
       // Face
