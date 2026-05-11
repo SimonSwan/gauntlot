@@ -275,7 +275,10 @@ export class Render {
       case 'wizard':  col = Math.min(dir, cols - 1); row = Math.floor((e.ageMs | 0) / 80) % rows; break;
       default:        col = Math.min(dir, cols - 1); row = 0;  // valkyrie / elf — static
     }
-    const drawW = fw * 2 * S, drawH = fh * 2 * S;
+    // Source is 16×16; our renderer already applies a 2× world scale, so
+    // drawing at fw*S keeps the projectile roughly 2/3 the player size on
+    // screen (the doc's "2×" was for an upstream renderer without that scale).
+    const drawW = fw * S, drawH = fh * S;
     const sx = this.viewX + (e.wx + 4) * S - this.cameraX - drawW / 2 + 4 * S;
     const sy = this.viewY + (e.wy + 4) * S - this.cameraY - drawH / 2 + 4 * S;
     this.ctx.imageSmoothingEnabled = false;
