@@ -132,8 +132,10 @@ function classifyPixel(r, g, b) {
   // Vertical gate:   B near 0x40  (ROM tile $04, C534 address $9D7C)
   // The $40 difference mirrors the orientation flag in the ROM entity descriptor.
   if (r >= 0xA0 && g >= 0xA0 && Math.abs(r - g) < 0x30 && b < 0x80) {
-    if (b < 0x20) return { type: T.GATE_H }; // CONFIRMED horizontal
-    return { type: T.GATE_V };               // CONFIRMED vertical
+    // Gates start LOCKED — without this field the renderer's `tile.locked`
+    // check is undefined and the gate sprite never draws.
+    if (b < 0x20) return { type: T.GATE_H, locked: true }; // CONFIRMED horizontal
+    return { type: T.GATE_V, locked: true };               // CONFIRMED vertical
   }
 
   // ── Generator (high red: R >= 0xE0, G < 0x10) ────────────────────────────
