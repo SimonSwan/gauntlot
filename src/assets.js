@@ -1,163 +1,266 @@
-// Asset loader: pre-loads images, level PNGs, and audio.
-//
-// Sprite paths now come from the original Atari Gauntlet sprite set
-// (mbeisser1/gauntlet_mame_gfx, MIT) shipped in assets/sprites/. Keys here
-// match HEROES[].id and MONSTER_TYPES[].key in constants.js so render.js can
-// look them up by entity type.
+/**
+ * src/assets.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Asset loader for Gauntlet (1985) recreation.
+ *
+ * Loads ALL sprites from the assets/sprites/ directory.
+ * All sprite files in that directory come from mbeisser1/gauntlet_mame_gfx v1.1.0
+ * PLUS gate-horizontal.png and gate-vertical.png extracted from all-monster.png
+ * by tools/setup-assets.mjs.
+ *
+ * HOW IT WORKS:
+ *   1. Call Assets.load(basePath) — returns a Promise that resolves when
+ *      every image and audio file is loaded.
+ *   2. Access loaded images via Assets.img['key'] → HTMLImageElement.
+ *   3. Access loaded audio via Assets.sfx['key'] → HTMLAudioElement.
+ *
+ * All images are keyed by short names defined in MANIFEST below.
+ * The renderer (render.js) uses these exact key names — do not rename.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
-const IMAGE_LIST = {
-  // Heroes (CONFIRMED frame layouts — see HEROES[] in constants.js)
-  warrior:       "assets/sprites/player-warrior-sprite-sheet.png",
-  valkyrie:      "assets/sprites/player-valkyrie-sprite-sheet.png",
-  wizard:        "assets/sprites/player-wizard-sprite-sheet.png",
-  elf:           "assets/sprites/player-elf-sprite-sheet.png",
+import { MON } from './constants.js';
 
-  // Monsters — keys match MONSTER_TYPES[].key
-  ghost:         "assets/sprites/monster-ghost1-sprite-sheet.png",
-  demon:         "assets/sprites/monster-demon1-sprite-sheet.png",
-  grunt:         "assets/sprites/monster-grunt1-sprite-sheet.png",
-  sorcerer:      "assets/sprites/monster-sorcerer1-sprite-sheet.png",
-  lobber:        "assets/sprites/monster-lobber1-sprite-sheet.png",
-  death:         "assets/sprites/monster-death.png",
-  thief:         "assets/sprites/monster-thief-sprite-sheet.png",
+// ── Image manifest ────────────────────────────────────────────────────────────
+// Every entry: { key, file }
+// key  = name used by renderer/entities to look up the image
+// file = path relative to basePath (typically 'assets/')
 
-  // Generators
-  ghostGen:      "assets/sprites/monster-ghost-generator.png",
-  monsterGen:    "assets/sprites/monster-monster-generator.png",
+const IMAGE_MANIFEST = [
+  // ── Player sprites ─────────────────────────────────────────────────────────
+  // warrior: 216×192px, 9 cols × 8 rows, 24×24px frames  [CONFIRMED SPR]
+  { key: 'warrior',          file: 'sprites/player-warrior-sprite-sheet.png' },
+  { key: 'warrior_weapon',   file: 'sprites/player-warrior-weapon-sprite-sheet.png' },
+  { key: 'warrior_exit',     file: 'sprites/player-warrior-exit-sprite-sheet.png' },
+  // valkyrie: 216×192px, 9×8, 24px  [CONFIRMED SPR]
+  { key: 'valkyrie',         file: 'sprites/player-valkyrie-sprite-sheet.png' },
+  { key: 'valkyrie_weapon',  file: 'sprites/player-valkyrie-weapon-sprite-sheet.png' },
+  { key: 'valkyrie_exit',    file: 'sprites/player-valkyrie-exit-sprite-sheet.png' },
+  // elf: 192×192px, 8×8, 24px  [CONFIRMED SPR]
+  { key: 'elf',              file: 'sprites/player-elf-sprite-sheet.png' },
+  { key: 'elf_weapon',       file: 'sprites/player-elf-weapon-sprite-sheet.png' },
+  { key: 'elf_exit',         file: 'sprites/player-elf-exit-sprite-sheet.png' },
+  // wizard: 144×192px, 6×8, 24px  [CONFIRMED SPR]
+  { key: 'wizard',           file: 'sprites/player-wizard-sprite-sheet.png' },
+  { key: 'wizard_weapon',    file: 'sprites/player-wizard-weapon-sprite-sheet.png' },
+  { key: 'wizard_exit',      file: 'sprites/player-wizard-exit-sprite-sheet.png' },
+  // spawn animation: 168×24px, 7 frames, 24px  [CONFIRMED SPR]
+  { key: 'spawn',            file: 'sprites/player-spawn-sprite-sheet.png' },
 
-  // Pickups (keys match TREASURE_TYPES[].key)
-  health:        "assets/sprites/dungeon-potion-blue.png",
-  poison:        "assets/sprites/dungeon-potion-orange.png",
-  food1:         "assets/sprites/dungeon-food-turkey.png",
-  food2:         "assets/sprites/dungeon-food-ham.png",
-  food3:         "assets/sprites/dungeon-food-drumstick.png",
-  key:           "assets/sprites/dungeon-key.png",
-  potion:        "assets/sprites/dungeon-potion-blue.png",
-  gold:          "assets/sprites/dungeon-treasure-bag.png",
-  chest:         "assets/sprites/dungeon-treasure-chest-sprite-sheet.png",
+  // ── Monster sprites ────────────────────────────────────────────────────────
+  // Ghost: 96×192px, 4 cols × 8 rows, 24px  [CONFIRMED SPR]
+  // 3 themes = 3 dungeon colour palettes
+  { key: 'ghost1',           file: 'sprites/monster-ghost1-sprite-sheet.png' },
+  { key: 'ghost2',           file: 'sprites/monster-ghost2-sprite-sheet.png' },
+  { key: 'ghost3',           file: 'sprites/monster-ghost3-sprite-sheet.png' },
+  // Grunt: 120×192px, 5×8, 24px  [CONFIRMED SPR]
+  { key: 'grunt1',           file: 'sprites/monster-grunt1-sprite-sheet.png' },
+  { key: 'grunt2',           file: 'sprites/monster-grunt2-sprite-sheet.png' },
+  { key: 'grunt3',           file: 'sprites/monster-grunt3-sprite-sheet.png' },
+  // Grunt alt: 144×192px, 6×8, 24px  [CONFIRMED SPR]
+  { key: 'grunt1_alt',       file: 'sprites/monster-grunt1-alt-sprite-sheet.png' },
+  { key: 'grunt2_alt',       file: 'sprites/monster-grunt2-alt-sprite-sheet.png' },
+  { key: 'grunt3_alt',       file: 'sprites/monster-grunt3-alt-sprite-sheet.png' },
+  // Demon: 192×192px, 8×8, 24px  [CONFIRMED SPR]
+  { key: 'demon1',           file: 'sprites/monster-demon1-sprite-sheet.png' },
+  { key: 'demon2',           file: 'sprites/monster-demon2-sprite-sheet.png' },
+  { key: 'demon3',           file: 'sprites/monster-demon3-sprite-sheet.png' },
+  // Sorcerer: 144×192px, 6×8, 24px  [CONFIRMED SPR]
+  { key: 'sorcerer1',        file: 'sprites/monster-sorcerer1-sprite-sheet.png' },
+  { key: 'sorcerer2',        file: 'sprites/monster-sorcerer2-sprite-sheet.png' },
+  { key: 'sorcerer3',        file: 'sprites/monster-sorcerer3-sprite-sheet.png' },
+  // Lobber: 120×128px, ~5×5, 24px  [CONFIRMED SPR]
+  { key: 'lobber1',          file: 'sprites/monster-lobber1-sprite-sheet.png' },
+  { key: 'lobber2',          file: 'sprites/monster-lobber2-sprite-sheet.png' },
+  { key: 'lobber3',          file: 'sprites/monster-lobber3-sprite-sheet.png' },
+  // Lobber explosion: 48×16px, 3 frames, 16px  [CONFIRMED SPR]
+  { key: 'lobber_expl',      file: 'sprites/monster-lobber-exlosion-sprite-sheet.png' },
+  // Death: 72×192px, 3×8, 24px (only 1 theme — Death is unique)  [CONFIRMED SPR]
+  { key: 'death',            file: 'sprites/monster-death.png' },
+  // Thief: 216×192px, 9×8, 24px (only 1 theme)  [CONFIRMED SPR]
+  { key: 'thief',            file: 'sprites/monster-thief-sprite-sheet.png' },
 
-  // Doors / exits
-  exit:          "assets/sprites/dungeon-exit.png",
-  exit_to_4:     "assets/sprites/dungeon-exit-to-4.png",
-  exit_to_8:     "assets/sprites/dungeon-exit-to-8.png",
+  // ── Generator sprites ──────────────────────────────────────────────────────
+  // Ghost generator (skull cage): 72×24px, 3 frames (L1/L2/L3)  [CONFIRMED SPR]
+  // Frame 0 = L1 (1-shot to destroy), frame 1 = L2, frame 2 = L3
+  { key: 'ghost_gen',        file: 'sprites/monster-ghost-generator.png' },
+  // Stone cage (all non-ghost generators): 72×24px, 3 frames  [CONFIRMED SPR]
+  { key: 'monster_gen',      file: 'sprites/monster-monster-generator.png' },
 
-  // FX
-  explosion:     "assets/sprites/explosion-collision-sprite-sheet.png",
+  // ── Gate sprites ───────────────────────────────────────────────────────────
+  // Extracted from all-monster.png (row 2, right section) by setup-assets.mjs.
+  // $03 = horizontal gate bar, confirmed Level 1 row21 col15  [CONFIRMED VIS]
+  // $04 = vertical gate post, confirmed Level 1 row31 col9    [CONFIRMED VIS]
+  // These are NOT stone walls — they are the blue bar/grate graphics.
+  // Stone wall tile graphics require chars ROM decode (not yet done).
+  { key: 'gate_h',           file: 'sprites/gate-horizontal.png' },  // 29×66px
+  { key: 'gate_v',           file: 'sprites/gate-vertical.png' },    // 12×161px
 
-  // ROM-extracted bitmap font
-  textAlphabet:        "assets/sprites/text-an-alphabet.png",
-  textAlphabetLarge:   "assets/sprites/text-an-alphabet-large-0-9A.png",
+  // ── Exit sprites  [CONFIRMED SPR] ─────────────────────────────────────────
+  { key: 'exit',             file: 'sprites/dungeon-exit.png' },           // 16×16px
+  { key: 'exit_4',           file: 'sprites/dungeon-exit-to-4.png' },      // 16×16px
+  { key: 'exit_8',           file: 'sprites/dungeon-exit-to-8.png' },      // 16×16px
 
-  // Wall / floor tile atlas — original Atari Gauntlet ROM-extracted
-  // (16 cols × 8 rows of 32×32 cells; see render.js for wall-mask math).
-  backgrounds:   "assets/sprites/backgrounds.png",
-};
+  // ── Key sprites  [CONFIRMED VIS Level1 row31 col3] ────────────────────────
+  { key: 'key',              file: 'sprites/dungeon-key.png' },            // 16×16px
+  { key: 'keyring',          file: 'sprites/dungeon-keyring.png' },        // 24×16px
 
-const SOUND_LIST = {
-  firewarrior:    "assets/sounds/firewarrior.mp3",
-  firevalkyrie:   "assets/sounds/firevalkyrie.mp3",
-  firewizard:     "assets/sounds/firewizard.mp3",
-  fireelf:        "assets/sounds/fireelf.mp3",
-  collectfood:    "assets/sounds/collectfood.mp3",
-  collectkey:     "assets/sounds/collectkey.mp3",
-  collectpotion:  "assets/sounds/collectpotion.mp3",
-  collectgold:    "assets/sounds/collectgold.mp3",
-  exitlevel:      "assets/sounds/exitlevel.mp3",
-  generatordeath: "assets/sounds/generatordeath.mp3",
-  monsterdeath1:  "assets/sounds/monsterdeath1.mp3",
-  monsterdeath2:  "assets/sounds/monsterdeath2.mp3",
-  monsterdeath3:  "assets/sounds/monsterdeath3.mp3",
-  malepain1:      "assets/sounds/malepain1.mp3",
-  malepain2:      "assets/sounds/malepain2.mp3",
-  femalepain1:    "assets/sounds/femalepain1.mp3",
-  femalepain2:    "assets/sounds/femalepain2.mp3",
-  weak:           "assets/sounds/weak.mp3",
-  opendoor:       "assets/sounds/opendoor.mp3",
-  victory:        "assets/sounds/victory.mp3",
-  gameover:       "assets/sounds/gameover.mp3",
-  highscore:      "assets/sounds/highscore.mp3",
-  music_lostcorridors:   "assets/sounds/music.lostcorridors.mp3",
-  music_bloodyhalo:      "assets/sounds/music.bloodyhalo.mp3",
-  music_citrinitas:      "assets/sounds/music.citrinitas.mp3",
-  music_fleshandsteel:   "assets/sounds/music.fleshandsteel.mp3",
-  music_mountingassault: "assets/sounds/music.mountingassault.mp3",
-  music_phantomdrone:    "assets/sounds/music.phantomdrone.mp3",
-  music_thebeginning:    "assets/sounds/music.thebeginning.mp3",
-  music_warbringer:      "assets/sounds/music.warbringer.mp3",
-};
+  // ── Food sprites  [food_turkey CONFIRMED VIS Level1 row26 col31] ──────────
+  { key: 'food_turkey',      file: 'sprites/dungeon-food-turkey.png' },    // 24×24px
+  { key: 'food_drumstick',   file: 'sprites/dungeon-food-drumstick.png' }, // 24×24px
+  { key: 'food_ham',         file: 'sprites/dungeon-food-ham.png' },       // 24×24px
+  { key: 'food_jug',         file: 'sprites/dungeon-food-jug.png' },       // 24×24px
 
-// The original Atari Gauntlet 1 ROM mazes, reconstructed from gex's
-// pre-rendered reference PNGs by tools/template-match-mazes.mjs. Each PNG is
-// a 33x33 tile grid in the same encoding the level loader already uses. The
-// numbering matches gex's maze-NNN ROM addresses; gaps (e.g. 050, 114-149)
-// reflect mazes gex couldn't decode.
-const MAZE_NUMBERS = [
-  ...Array.from({ length: 49  }, (_, i) => i + 1),     // 001-049
-  ...Array.from({ length: 63  }, (_, i) => i + 51),    // 051-113
-  150, 151,
+  // ── Potion sprites  [potion_blue CONFIRMED VIS Level1 row1 col5] ──────────
+  { key: 'potion_blue',      file: 'sprites/dungeon-potion-blue.png' },    // 16×16px
+  { key: 'potion_orange',    file: 'sprites/dungeon-potion-orange.png' },  // 16×16px
+  { key: 'invisibility',     file: 'sprites/dungeon-limited-invisibility.png' }, // 24×24px
+
+  // ── Power-up sprites  [HYPOTHESIS - $2F–$34 each in 1 level only] ─────────
+  { key: 'plus_armor',       file: 'sprites/dungeon-potion-extra-armor.png' },      // 16×16px
+  { key: 'plus_speed',       file: 'sprites/dungeon-potion-extra-speed.png' },      // 16×16px
+  { key: 'plus_magic',       file: 'sprites/dungeon-potion-extra-magic.png' },      // 16×16px
+  { key: 'plus_shot_pow',    file: 'sprites/dungeon-potion-extra-shot-power.png' }, // 16×16px
+  { key: 'plus_shot_spd',    file: 'sprites/dungeon-potion-extra-shot-speed.png' }, // 16×16px
+  { key: 'plus_fight',       file: 'sprites/dungeon-potion-weapon.png' },           // 16×16px
+
+  // ── Treasure sprites  [treasure_chest CONFIRMED VIS Level1 row2 col10] ────
+  { key: 'treasure_chest',   file: 'sprites/dungeon-treasure-chest-sprite-sheet.png' }, // 72×24px, 3fr
+  { key: 'treasure_bag',     file: 'sprites/dungeon-treasure-bag.png' },               // 24×24px
+
+  // ── Effect sprites ─────────────────────────────────────────────────────────
+  { key: 'teleport',         file: 'sprites/dungeon-teleport-sprite-sheet.png' },     // 96×16px, 6fr
+  { key: 'collision_expl',   file: 'sprites/explosion-collision-sprite-sheet.png' },  // 48×16px, 3fr
+  { key: 'teleport_expl',    file: 'sprites/explosion-teleport-sprite-sheet.png' },   // 144×24px, 6fr
+
+  // ── HUD icons ──────────────────────────────────────────────────────────────
+  { key: 'icon_key',         file: 'sprites/icon-key.png' },      // 8×8px
+  { key: 'icon_potion',      file: 'sprites/icon-potion.png' },   // 8×8px
+  { key: 'icon_upgrades',    file: 'sprites/icon-upgrades.png' }, // 48×8px, 6 icons
+
+  // ── Title / UI ─────────────────────────────────────────────────────────────
+  { key: 'text_gauntlet',    file: 'sprites/text-gauntlet.png' }, // 80×24px
+  { key: 'text_points',      file: 'sprites/text-points.png' },   // 24×80px
 ];
-const LEVEL_LIST = MAZE_NUMBERS.map(
-  n => `assets/levels-rom/maze${String(n).padStart(3, "0")}.png`
-);
-export { MAZE_NUMBERS };
 
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => { console.warn("missing image:", url); resolve(null); };
-    img.src = url;
-  });
-}
-function loadAudio(url) {
-  return new Promise((resolve) => {
-    const a = new Audio();
-    a.preload = "auto";
-    a.addEventListener("canplaythrough", () => resolve(a), { once: true });
-    a.addEventListener("error", () => { console.warn("missing audio:", url); resolve(null); }, { once: true });
-    a.src = url;
-    setTimeout(() => resolve(a), 4000);
-  });
-}
+// ── Level manifest ────────────────────────────────────────────────────────────
+// The ROM-decoded levels are stored as individual PNG files.
+// This function fetches the manifest JSON generated by tools/rom-decoder.mjs.
 
-export class Assets {
-  constructor() {
-    this.images = {};
-    this.sounds = {};
-    this.levels = [];
-  }
-  async loadAll(progress) {
-    const tasks = [];
-    let done = 0, total = Object.keys(IMAGE_LIST).length + Object.keys(SOUND_LIST).length + LEVEL_LIST.length;
-    const bump = (k, v) => { done++; if (progress) progress(done, total, k); };
-
-    for (const [key, url] of Object.entries(IMAGE_LIST)) {
-      tasks.push(loadImage(url).then(img => { this.images[key] = img; bump("img", key); }));
-    }
-    for (const [key, url] of Object.entries(SOUND_LIST)) {
-      tasks.push(loadAudio(url).then(a => { this.sounds[key] = a; bump("snd", key); }));
-    }
-    for (const url of LEVEL_LIST) {
-      tasks.push(loadImage(url).then(img => {
-        if (!img) { bump("lvl", url); return; }
-        const c = document.createElement("canvas");
-        c.width = img.width; c.height = img.height;
-        const ctx = c.getContext("2d");
-        ctx.drawImage(img, 0, 0);
-        const data = ctx.getImageData(0, 0, img.width, img.height).data;
-        const pixels = new Uint32Array(img.width * img.height);
-        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-          pixels[j] = (data[i] << 16) | (data[i+1] << 8) | data[i+2];
-        }
-        const name = url.split("/").pop().replace(".png","");
-        this.levels.push({ name, w: img.width, h: img.height, pixels });
-        bump("lvl", name);
-      }));
-    }
-    await Promise.all(tasks);
-  }
-  pixel(level, tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= level.w || ty >= level.h) return 0;
-    return level.pixels[tx + ty * level.w];
+async function loadLevelManifest(basePath) {
+  const url = `${basePath}mazes/rom/manifest.json`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (e) {
+    console.warn(`[Assets] ROM level manifest not found at ${url}.`, e.message);
+    console.warn('[Assets] ROM-decoded levels will not be available.');
+    console.warn('[Assets] Run: node tools/rom-decoder.mjs <rom-dir> to generate them.');
+    return null;
   }
 }
+
+// ── Asset store ───────────────────────────────────────────────────────────────
+
+export const Assets = {
+  /** @type {Object.<string, HTMLImageElement>} */
+  img: {},
+
+  /** @type {string|null} base path used for loading */
+  basePath: null,
+
+  /** @type {Object|null} ROM level manifest (from mazes/rom/manifest.json) */
+  levelManifest: null,
+
+  /**
+   * Load all assets.
+   * @param {string} basePath  Path prefix for all asset files (e.g. 'assets/').
+   *                           Must end with '/'.
+   * @returns {Promise<void>}  Resolves when every image is loaded.
+   *                           Logs warnings for any missing files (does not reject).
+   */
+  async load(basePath = 'assets/') {
+    this.basePath = basePath;
+    console.log(`[Assets] Loading from ${basePath} …`);
+
+    // Load all images in parallel
+    const results = await Promise.allSettled(
+      IMAGE_MANIFEST.map(({ key, file }) => this._loadImage(key, basePath + file))
+    );
+
+    let ok = 0, fail = 0;
+    for (const r of results) {
+      if (r.status === 'fulfilled') ok++;
+      else fail++;
+    }
+
+    console.log(`[Assets] Images: ${ok} loaded, ${fail} failed`);
+    if (fail > 0) {
+      console.warn('[Assets] Missing sprites will show as coloured rectangles.');
+      console.warn('[Assets] Run tools/setup-assets.mjs to copy sprites into place.');
+    }
+
+    // Load ROM level manifest (optional)
+    this.levelManifest = await loadLevelManifest(basePath);
+    if (this.levelManifest) {
+      console.log(`[Assets] ROM levels: ${this.levelManifest.count} levels available`);
+    }
+  },
+
+  /**
+   * Load a single image and store it under the given key.
+   * @private
+   */
+  _loadImage(key, url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => { this.img[key] = img; resolve(); };
+      img.onerror = () => {
+        console.warn(`[Assets] Failed to load: ${url}`);
+        reject(new Error(`Cannot load ${url}`));
+      };
+      img.src = url;
+    });
+  },
+
+  // ── Convenience getters ─────────────────────────────────────────────────────
+
+  /**
+   * Get the correct monster sprite sheet key for a given monster type and theme.
+   * @param {number} monType   One of MON.* constants
+   * @param {number} theme     Dungeon theme 0/1/2 (for monsters with 3 variants)
+   * @returns {string} Image key for Assets.img lookup
+   */
+  monsterSheetKey(monType, theme = 0) {
+    const t = Math.max(0, Math.min(2, theme));
+    switch (monType) {
+      case MON.GHOST:    return `ghost${t + 1}`;
+      case MON.GRUNT:    return `grunt${t + 1}`;
+      case MON.DEMON:    return `demon${t + 1}`;
+      case MON.SORCERER: return `sorcerer${t + 1}`;
+      case MON.LOBBER:   return `lobber${t + 1}`;
+      case MON.DEATH:    return 'death';   // Only one theme
+      case MON.THIEF:    return 'thief';   // Only one theme
+      default:           return `grunt${t + 1}`; // Fallback
+    }
+  },
+
+  /**
+   * Get the generator sprite sheet key.
+   * @param {number} monType  The monster type this generator spawns
+   * @returns {string} Image key
+   */
+  generatorSheetKey(monType) {
+    return monType === MON.GHOST ? 'ghost_gen' : 'monster_gen';
+  },
+
+  /**
+   * Get the player sprite sheet key.
+   * @param {string} heroId  'warrior', 'valkyrie', 'elf', or 'wizard'
+   * @returns {string} Image key
+   */
+  heroSheetKey(heroId) {
+    return heroId; // The hero id IS the image key
+  },
+};

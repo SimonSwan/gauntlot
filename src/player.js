@@ -1,217 +1,183 @@
-// Player: one of four heroes, controlled by a single input slot.
-import {
-  CELL_PX, FPS, DIR, DIR_VEC, CBOX,
-  SLIDE_DIRECTIONS, AUTO_HURT_FRAMES,
-} from "./constants.js";
-import { Weapon, Fx } from "./entities.js";
+/**
+ * src/player.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * One Player per slot (up to 4). Owns hero stats, world position, HP, score,
+ * keys, potions, and a per-frame input → movement / shoot / magic loop.
+ *
+ * Coordinate system matches entities.js: 16px tile grid, world positions in
+ * pixels, entity centre = (wx + 12, wy + 12).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { HEROES, DMG, TIME, DIR, DIR_VEC, SCORE } from "./constants.js";
+import { Projectile } from "./entities.js";
+import { T } from "./level.js";
 
 export class Player {
-  constructor(slot, type) {
-    this.id = `p${slot}`;
-    this.slot = slot;
-    this.type = type;
-    this.player = true;
-    this.cbox = CBOX.PLAYER;
+  /**
+   * @param {number} slot   0..3
+   * @param {number} heroIdx index into HEROES (0=warrior, 1=valkyrie, 2=elf, 3=wizard)
+   */
+  constructor(slot, heroIdx) {
+    this.slot      = slot;
+    this.hero      = HEROES[heroIdx];
+    this.joined    = false;
+    this.dead      = false;
+    this.wx        = 0;
+    this.wy        = 0;
+    this.hp        = TIME.PLAYER_START_HP;
+    this.score     = 0;
+    this.keys      = 0;
+    this.potions   = 0;
+    this.dir       = DIR.S;
+    this.animFrame = 0;
+    this.animTimer = 0;
+    this.shotCd    = 0;
+    this.invuln    = 0;
+    this.drainAcc  = 0;
+  }
 
-    this.x = 0; this.y = 0;
-    this.dir = DIR.DOWN;
-    this.cells = [];
+  get cx() { return this.wx + 12; }
+  get cy() { return this.wy + 12; }
+  get tileCol() { return Math.floor(this.cx / 16); }
+  get tileRow() { return Math.floor(this.cy / 16); }
 
-    this.joined = false;
+  spawnAt(col, row) {
+    this.wx = col * 16;
+    this.wy = row * 16;
+    this.hp = Math.max(this.hp, TIME.PLAYER_START_HP);
     this.dead = false;
-    this.exiting = null;
-    this.firing = false;
-    this.moveDir = -1;
-    this.score = 0;
-    this.health = type.health;
-    this.lives = 0; // shown in HUD as "Nx"; arcade-style each coin grants 700 health = 1 life
-    this.keys = 0;
-    this.potions = 0;
-    this.reloading = 0;
-    this.hurting = 0;
-    this.healing = 0;
-    this.df = (Math.random() * 100) | 0;
-
-    this.lastWeakAnnounce = 0;
+    this.invuln = TIME.INVULN_MS;
   }
 
-  alive() { return this.joined && !this.dead && !this.exiting; }
-
-  join(level) {
-    this.joined = true;
-    this.dead = false;
-    this.exiting = null;
-    this.health = this.type.health;
-    this.score = this.score || 0;
-    this.keys = 0;
-    this.potions = 0;
-    const start = level.starts[this.slot] || level.starts[0];
-    if (start) {
-      this.x = start.x;
-      this.y = start.y;
-      level.occupy(this, this.x, this.y);
-    }
-  }
-
-  leave() {
-    if (!this.joined) return;
-    this.joined = false;
-    if (this.cells) for (const c of this.cells) {
-      const i = c.occupied.indexOf(this); if (i >= 0) c.occupied.splice(i, 1);
-    }
-    this.cells = [];
-  }
-
-  update(dt, frame, level, input) {
+  /**
+   * @param {number} dt        Delta time in ms
+   * @param {object} cmd       Input.getState() — {up,down,left,right,shoot,magic,dx,dy}
+   * @param {Level}  level
+   * @param {EntityManager} mgr
+   */
+  update(dt, cmd, level, mgr) {
     if (!this.joined || this.dead) return;
-    if (this.exiting) {
-      if (--this.exiting.count <= 0) {
-        // exited; main game flow detects when all live players have exited
-        this.exiting.done = true;
+
+    // Passive HP drain (≈ 1 HP per 0.5 s = 2 HP/s)
+    this.drainAcc += (TIME.HEALTH_DRAIN_PER_SEC * dt) / 1000;
+    if (this.drainAcc >= 1) {
+      const whole = this.drainAcc | 0;
+      this.hp -= whole;
+      this.drainAcc -= whole;
+    }
+    if (this.hp <= 0) { this.hp = 0; this.dead = true; return; }
+
+    if (this.shotCd > 0) this.shotCd -= dt;
+    if (this.invuln > 0) this.invuln -= dt;
+
+    // ── Movement ────────────────────────────────────────────────────────────
+    const speed   = TIME.PLAYER_SPEED_PX * (this.hero.moveSpeed || 1);
+    const pxPerMs = speed / 1000;
+    const move    = pxPerMs * dt;
+
+    let dx = 0, dy = 0;
+    if (cmd.left)  dx -= 1;
+    if (cmd.right) dx += 1;
+    if (cmd.up)    dy -= 1;
+    if (cmd.down)  dy += 1;
+
+    if (dx || dy) {
+      // Move X and Y independently so we can slide along walls
+      if (dx !== 0) {
+        const nx   = this.wx + dx * move;
+        const ncol = Math.floor((nx + 12) / 16);
+        if (!level.isBlocked(ncol, this.tileRow)) this.wx = nx;
       }
-      return;
+      if (dy !== 0) {
+        const ny   = this.wy + dy * move;
+        const nrow = Math.floor((ny + 12) / 16);
+        if (!level.isBlocked(this.tileCol, nrow)) this.wy = ny;
+      }
+
+      // Face
+      if      (dx ===  1 && dy ===  1) this.dir = DIR.SE;
+      else if (dx ===  1 && dy === -1) this.dir = DIR.NE;
+      else if (dx === -1 && dy ===  1) this.dir = DIR.SW;
+      else if (dx === -1 && dy === -1) this.dir = DIR.NW;
+      else if (dx ===  1)              this.dir = DIR.E;
+      else if (dx === -1)              this.dir = DIR.W;
+      else if (dy ===  1)              this.dir = DIR.S;
+      else if (dy === -1)              this.dir = DIR.N;
+
+      // Anim
+      this.animTimer += dt;
+      if (this.animTimer >= TIME.ANIM_FRAME_MS) {
+        this.animTimer -= TIME.ANIM_FRAME_MS;
+        this.animFrame = (this.animFrame + 1) % Math.max(1, this.hero.frameCols);
+      }
+    } else {
+      this.animFrame = 0;
     }
 
-    // auto-drain
-    if ((frame % AUTO_HURT_FRAMES) === 0) this._autoHurt();
+    // ── Shoot ───────────────────────────────────────────────────────────────
+    if (cmd.shoot && this.shotCd <= 0) {
+      const v = DIR_VEC[this.dir];
+      const shotSpeed = TIME.PLAYER_SHOT_SPEED * (this.hero.shotSpeed || 1) / 1000;
+      mgr.add(new Projectile(
+        this.cx - 4, this.cy - 4,
+        v.dx * shotSpeed,
+        v.dy * shotSpeed,
+        "player",
+        DMG.PLAYER_SHOT,
+        false,
+      ));
+      this.shotCd = 300 / (this.hero.shotSpeed || 1);
+    }
 
-    if (this.hurting > 0) this.hurting--;
-    if (this.healing > 0) this.healing--;
-    if (this.reloading > 0) this.reloading--;
-
-    const cmd = input.getPlayer(this.slot);
-
-    // magic potion (nuke)
+    // ── Magic ───────────────────────────────────────────────────────────────
     if (cmd.magic && this.potions > 0) {
       this.potions--;
-      this._nuke(level);
+      const radius = (DMG.MAGIC_RADIUS || 6) * (this.hero.magic || 1);
+      this.score += mgr.detonateMagic(this.cx, this.cy, radius, [this]);
     }
 
-    // facing
-    let dir = -1;
-    if (cmd.dy < 0 && cmd.dx < 0) dir = DIR.UPLEFT;
-    else if (cmd.dy < 0 && cmd.dx > 0) dir = DIR.UPRIGHT;
-    else if (cmd.dy > 0 && cmd.dx < 0) dir = DIR.DOWNLEFT;
-    else if (cmd.dy > 0 && cmd.dx > 0) dir = DIR.DOWNRIGHT;
-    else if (cmd.dy < 0) dir = DIR.UP;
-    else if (cmd.dy > 0) dir = DIR.DOWN;
-    else if (cmd.dx < 0) dir = DIR.LEFT;
-    else if (cmd.dx > 0) dir = DIR.RIGHT;
-    this.moveDir = dir;
-    if (dir >= 0) this.dir = dir;
-
-    this.firing = !!cmd.shoot;
-    if (this.firing) {
-      if (this.reloading <= 0) {
-        this.reloading = this.type.reload;
-        const wt = {
-          speed: this.type.weaponSpeed, reload: this.type.reload, damage: this.type.weaponDamage,
-          rotate: this.type.weaponRotate, projectile: this.type.key + "Shot",
-        };
-        const w = new Weapon(this.x, this.y, wt, this.dir, this);
-        level.add(w);
-        // Per-hero weapon SFX — falls back to firewarrior if unspecified.
-        level.game?.sounds.play(this.type.weaponSound || "firewarrior", 0.3);
-      }
-      return; // can't move while firing in arcade Gauntlet
-    }
-    if (dir < 0) return;
-
-    // Slide-along-walls movement, exactly as Jake Gordon's PLAYER update:
-    //
-    //   for each direction in SLIDE_DIRECTIONS[dir]:
-    //     trymove(direction)
-    //       - if it succeeded (no collision): we moved, return
-    //       - else publish PLAYER_COLLIDE for the collider, and CONTINUE the
-    //         slide loop with the next direction
-    //
-    // We inline the collide handler here so the player either picks up the
-    // treasure, opens the door, exits the level, or whacks the monster.
-    const dirs = SLIDE_DIRECTIONS[dir];
-    for (const d of dirs) {
-      const collision = level.trymove(this, d, this.type.speed);
-      if (!collision) return;             // moved, done
-      if (collision === true) continue;   // wall, try the next slide direction
-
-      // entity collision — publish-style handler matching Jake's onPlayerCollide:
-      //   monsters / generators take damage from the player
-      //   treasures get collected
-      //   doors open if we hold a key
-      //   exits trigger the exit sequence
-      // The player only takes damage from monsters via Monster.update, NOT here,
-      // so colliding with a monster doesn't double-tap the player.
-      if (collision.monster || collision.generator) {
-        collision.hurt(this.type.damage, this);
-      } else if (collision.treasure) {
-        collision.collect(this);
-      } else if (collision.door) {
-        if (this.keys > 0 && collision.open()) this.keys--;
-      } else if (collision.exit) {
-        this._exitTo(collision);
-      }
-      // try the remaining slide directions even after an entity collision —
-      // this is what makes the player "stutter past" a treasure on the wall.
-    }
+    // ── Tile-side effects: gates / exits / items handled at game.js level ──
+    this._collectAt(level, mgr);
   }
 
-  _exitTo(exit) {
-    if (this.exiting) return;
-    if (this.health < this.type.health) this.health = Math.min(this.type.health, this.health + 100);
-    this.exiting = { count: FPS, done: false };
-    this.level?.game?.sounds.play("exitlevel", 0.7);
-  }
+  /** Collect any Item on the current tile, open gates with keys. */
+  _collectAt(level, mgr) {
+    const col = this.tileCol, row = this.tileRow;
+    const tile = level.tileAt(col, row);
+    if (!tile) return;
 
-  _nuke(level) {
-    // Damages all monsters within `magic` tiles
-    const limit = CELL_PX * this.type.magic;
-    for (const e of level.entities) {
-      if (!e.monster || e.dead) continue;
-      const dx = Math.abs(e.x - this.x), dy = Math.abs(e.y - this.y);
-      const distance = Math.max(dx, dy);
-      if (distance < limit) {
-        const damage = this.type.magic * (1 - distance / limit);
-        e.hurt(damage, this, true);
+    // Adjacent gates: if the player has a key and is next to a locked gate, open.
+    if (this.keys > 0) {
+      for (const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        if (level.unlockGate(col + dc, row + dr)) {
+          this.keys--;
+          break;
+        }
       }
     }
-    level.add(new Fx(this.x, this.y, "explosion"));
-    level.game?.sounds.play("collectpotion", 0.5);
-  }
 
-  heal(amount) { this.health = Math.min(this.type.health * 2, this.health + amount); this.healing = FPS / 2; }
+    // Stand-on item pickup
+    for (const e of mgr.entities) {
+      if (!e || e.dead) continue;
+      if (e.constructor.name !== "Item") continue;
+      const ec = Math.floor(e.cx / 16), er = Math.floor(e.cy / 16);
+      if (ec !== col || er !== row) continue;
 
-  hurt(damage, by, automatic = false) {
-    if (this.dead || this.exiting) return;
-    const dmg = automatic ? damage : Math.max(1, damage / this.type.armor);
-    this.health = Math.max(0, this.health - dmg);
-    if (!automatic) {
-      this.hurting = FPS / 2;
-      const k = this.type.voice === "female" ? "femalepain" : "malepain";
-      this.level?.game?.sounds.play(`${k}${1 + (Math.random()*2|0)}`, 0.5);
-    }
-    if (this.health === 0) this._die();
-    else if (this.health < 200) {
-      const t = performance.now();
-      if (t - this.lastWeakAnnounce > 8000) {
-        this.lastWeakAnnounce = t;
-        // The iconic Gauntlet weak-health voice cue.
-        this.level?.game?.sounds.say(`${this.type.key} needs food, badly!`, { cooldown: 8000 });
-      }
+      const k = e.itemKind || "";
+      if (k === "key")                                  { this.keys++;    e.dead = true; this.score += SCORE.COLLECT_KEY; }
+      else if (k === "potion_magic" || k === "invisibility") { this.potions++; e.dead = true; this.score += SCORE.COLLECT_POTION; }
+      else if (k.startsWith("food_"))                    { this.hp += DMG.FOOD_HP; e.dead = true; this.score += SCORE.COLLECT_FOOD; }
+      else if (k === "treasure_chest")                   { e.dead = true; this.score += SCORE.COLLECT_CHEST; }
+      else if (k === "treasure_bag")                     { e.dead = true; this.score += SCORE.COLLECT_BAG; }
+      else if (k.startsWith("plus_"))                    { e.dead = true; this.score += SCORE.COLLECT_BAG; }
     }
   }
 
-  _autoHurt() {
-    if (this.dead || this.exiting) return;
-    this.health = Math.max(0, this.health - 1);
-    if (this.health === 0) this._die();
-  }
-
-  _die() {
-    this.dead = true;
-    // Release cell occupancy so monsters don't pile up on the corpse tile.
-    this.level?._removeFromCells(this);
-    this.level?.game?.sounds.play("gameover", 0.5);
-    this.level?.game?.sounds.say(`${this.type.key} has died!`, { cooldown: 4000 });
+  hurt(dmg) {
+    if (this.dead || this.invuln > 0) return;
+    this.hp -= dmg;
+    this.invuln = TIME.INVULN_MS;
+    if (this.hp <= 0) { this.hp = 0; this.dead = true; }
   }
 }
-
-Player.prototype.level = null; // set by Game.start

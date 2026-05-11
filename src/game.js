@@ -1,438 +1,332 @@
-// Top-level game: loads assets, manages screens (title, select, playing, transition, gameover).
-import { Assets, MAZE_NUMBERS } from "./assets.js";
-import { Input } from "./input.js";
-import { Sounds } from "./sounds.js";
-import { Render } from "./render.js";
-import { Level } from "./level.js";
-import { Player } from "./player.js";
-import { Fx } from "./entities.js";
-import {
-  CELL_PX, FPS, PLAYER_TYPES, PLAYER_LIST, VIEWPORT, SCORE_PER_LEVEL,
-  WALL_THEME, FLOOR_THEME,
-} from "./constants.js";
+/**
+ * src/game.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Top-level state machine.
+ *
+ *   BOOT → TITLE → SELECT → PLAYING → TRANSITION → PLAYING ...
+ *                                ↘  GAMEOVER
+ *
+ * Holds the active Level + Players + EntityManager and drives the per-frame
+ * update / render loop.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
-// Per-dungeon wall + floor themes cycle through the available ROM-atlas
-// palettes so consecutive levels visually differ — same approach Jake's
-// javascript-gauntlet uses for its 10 hand-crafted dungeons.
-const WALL_CYCLE  = [WALL_THEME.BLUE_COBBLE, WALL_THEME.CONCRETE,    WALL_THEME.BLUE,         WALL_THEME.PURPLE_COBBLE,
-                     WALL_THEME.BLUE_BRICK,  WALL_THEME.PURPLE_TILE, WALL_THEME.CONCRETE,     WALL_THEME.BLUE_COBBLE];
-const FLOOR_CYCLE = [FLOOR_THEME.LIGHT_STONE, FLOOR_THEME.WOOD,      FLOOR_THEME.DARK_STONE,  FLOOR_THEME.BROWN_LAMINATE,
-                     FLOOR_THEME.PURPLE_LAMINATE, FLOOR_THEME.GREY_BOARDS, FLOOR_THEME.WOOD,  FLOOR_THEME.LIGHT_STONE];
-const MUSIC_CYCLE = ["music_citrinitas","music_fleshandsteel","music_phantomdrone","music_thebeginning",
-                     "music_mountingassault","music_warbringer","music_bloodyhalo","music_lostcorridors"];
+import { Assets }      from "./assets.js";
+import { Input }       from "./input.js";
+import { LevelLoader, T } from "./level.js";
+import { EntityManager, Monster, Projectile, Generator } from "./entities.js";
+import { Player }      from "./player.js";
+import { Render }      from "./render.js";
+import { HEROES, TIME, DMG, MON, PALETTE } from "./constants.js";
 
-// The original Atari Gauntlet 1 ROM mazes, reconstructed from gex's reference
-// renders. Maze numbers track the ROM addresses; we enumerate from the
-// authoritative MAZE_NUMBERS list so gaps (eg gex's bad-decode 050 and
-// 114-149) don't generate phantom levels.
-const LEVEL_META = MAZE_NUMBERS.map((n, i) => ({
-  src:   `maze${String(n).padStart(3, "0")}`,
-  name:  `Deck ${String(i + 1).padStart(2, "0")} — ROM ${String(n).padStart(3, "0")}`,
-  help:  i === 0 ? "Boarding the derelict. Watch your six." : null,
-  wall:  WALL_CYCLE[i % WALL_CYCLE.length],
-  floor: FLOOR_CYCLE[i % FLOOR_CYCLE.length],
-  music: MUSIC_CYCLE[i % MUSIC_CYCLE.length],
-}));
-
-const STATE = { BOOT: "boot", TITLE: "title", SELECT: "select", LOADING: "loading", PLAYING: "playing", TRANSITION: "transition", GAMEOVER: "gameover" };
+const STATE = {
+  BOOT:       "boot",
+  TITLE:      "title",
+  SELECT:     "select",
+  LOADING:    "loading",
+  PLAYING:    "playing",
+  TRANSITION: "transition",
+  GAMEOVER:   "gameover",
+};
 
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
-    this.assets = new Assets();
-    this.input = new Input();
-    this.sounds = new Sounds(this.assets);
-    this.render = new Render(canvas, this.assets);
-    this.events = { listeners: {}, on(k,f){(this.listeners[k]||(this.listeners[k]=[])).push(f);}, emit(k,...a){(this.listeners[k]||[]).forEach(f=>f(...a));} };
+    this.ctx    = canvas.getContext("2d");
+    this.render = new Render(canvas);
 
-    this.state = STATE.BOOT;
-    this.frame = 0;
     this.players = [
-      new Player(0, PLAYER_TYPES.WARRIOR),
-      new Player(1, PLAYER_TYPES.VALKYRIE),
-      new Player(2, PLAYER_TYPES.WIZARD),
-      new Player(3, PLAYER_TYPES.ELF),
+      new Player(0, 0),
+      new Player(1, 1),
+      new Player(2, 2),
+      new Player(3, 3),
     ];
-    this.activeTypes = [null, null, null, null]; // chosen type indices per slot during select
-
-    this.viewport = { x: 0, y: 0, w: 320, h: 320, outside: () => false };
-    this.viewport.outside = (x, y, w, h) => (x + w < this.viewport.x || x > this.viewport.x + this.viewport.w || y + h < this.viewport.y || y > this.viewport.y + this.viewport.h);
-    this._refreshViewportSize();
-    window.addEventListener("resize", () => this._refreshViewportSize());
-
-    this.levelIndex = 0;
-    this.level = null;
-    this.transitionTimer = 0;
-    this.gameoverTimer = 0;
-    this._loadProgress = { done: 0, total: 1, key: "" };
+    this.mgr        = new EntityManager();
+    this.level      = null;
+    this.levelIdx   = 0;
+    this.state      = STATE.BOOT;
+    this.frame      = 0;
+    this.lastT      = performance.now();
+    this.transTimer = 0;
+    this.loadProg   = { done: 0, total: 1 };
   }
 
   async start() {
-    this.state = STATE.BOOT;
+    Input.init();
+    this._setState(STATE.BOOT);
     this._renderBoot();
-    await this.assets.loadAll((d, t, k) => { this._loadProgress = { done: d, total: t, key: k }; });
-    this.state = STATE.TITLE;
-    this._loop();
+    try {
+      await Assets.load("assets/");
+      LevelLoader.init("assets/", Assets.levelManifest);
+    } catch (e) {
+      console.error("[Game] Asset load failed:", e);
+    }
+    this._setState(STATE.TITLE);
+    requestAnimationFrame(() => this._loop());
   }
 
+  _setState(s) { this.state = s; }
+
   _renderBoot() {
-    const ctx = this.canvas.getContext("2d");
-    const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60));
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#999"; ctx.font = `bold ${u*3}px monospace`;
+    const ctx = this.ctx;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "#9a9a9a";
+    ctx.font = "bold 32px monospace";
     ctx.textAlign = "center";
-    const p = this._loadProgress;
-    ctx.fillText("LOADING…", W/2, H/2 - u*2);
-    const barW = Math.floor(W * 0.4), barH = u;
-    ctx.fillStyle = "#444"; ctx.fillRect(W/2 - barW/2, H/2, barW, barH);
-    ctx.fillStyle = "#0c0"; ctx.fillRect(W/2 - barW/2, H/2, barW * (p.done/Math.max(1,p.total)), barH);
-    requestAnimationFrame(() => { if (this.state === STATE.BOOT) this._renderBoot(); });
+    ctx.fillText("LOADING…", this.canvas.width/2, this.canvas.height/2);
   }
 
   _loop() {
-    const tick = () => {
-      this.input.beginFrame();
-      this.frame++;
-      switch (this.state) {
-        case STATE.TITLE: this._title(); break;
-        case STATE.SELECT: this._select(); break;
-        case STATE.LOADING: this._loading(); break;
-        case STATE.PLAYING: this._playing(); break;
-        case STATE.TRANSITION: this._transition(); break;
-        case STATE.GAMEOVER: this._gameover(); break;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    const now = performance.now();
+    let dt = now - this.lastT;
+    this.lastT = now;
+    if (dt > 100) dt = 100;        // clamp absurd dt on tab-switch
+    this.frame++;
+
+    Input.update();
+
+    switch (this.state) {
+      case STATE.TITLE:      this._title(dt); break;
+      case STATE.SELECT:     this._select(dt); break;
+      case STATE.LOADING:    this._loading(dt); break;
+      case STATE.PLAYING:    this._playing(dt); break;
+      case STATE.TRANSITION: this._transition(dt); break;
+      case STATE.GAMEOVER:   this._gameover(dt); break;
+    }
+
+    // Clear one-shot 'pressed' set so confirm/magic don't fire continuously
+    Input.clearFrame();
+
+    requestAnimationFrame(() => this._loop());
   }
 
-  // -------- TITLE --------
-  _title() {
-    const ctx = this.canvas.getContext("2d");
+  // ── States ──────────────────────────────────────────────────────────────────
+  _title(dt) {
+    const ctx = this.ctx;
     const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60)); // base unit
-    ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
 
-    // GAUNTLET wordmark — drawn through the ROM bitmap font with a red
-    // shadow underlay, snapped to an integer scale picked from the window.
-    const fontSmall = this.render.fontSmall;
-    const titleText = "GAUNTLET";
-    const titleScale = Math.max(4, Math.floor(W * 0.6 / fontSmall.measure(titleText, 1)));
-    const tw = fontSmall.measure(titleText, titleScale);
-    const tx = Math.floor((W - tw) / 2);
-    const ty = Math.floor(H * 0.18);
-    fontSmall.draw(ctx, titleText, tx + titleScale, ty + titleScale, "#9a0a0a", titleScale);
-    fontSmall.draw(ctx, titleText, tx,              ty,              "#FFFFFF", titleScale);
-    // Subtitle
-    const subtitle = "1985 ATARI - 4 PLAYER ACTION";
-    const subScale = Math.max(2, Math.floor(titleScale / 3));
-    const sw = fontSmall.measure(subtitle, subScale);
-    fontSmall.draw(ctx, subtitle, Math.floor((W - sw) / 2), ty + 8 * titleScale + 12, "#FFB000", subScale);
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 96px monospace";
+    ctx.fillText("GAUNTLET", W/2, H * 0.30);
+    ctx.fillStyle = "#FFB000";
+    ctx.font = "bold 24px monospace";
+    ctx.fillText("1985 ATARI — 4 PLAYER ACTION", W/2, H * 0.40);
 
-    // Four hero standing portraits across the middle.
-    const portraitSize = Math.max(96, Math.floor(H * 0.18 / 24) * 24);
-    const cy = Math.floor(H * 0.55);
-    const gap = Math.floor(W * 0.06);
-    const totalW = portraitSize * 4 + gap * 3;
-    let x0 = (W - totalW) / 2;
+    const slotW = Math.min(180, W / 6);
+    const y     = H * 0.60;
     for (let i = 0; i < 4; i++) {
-      const t = this.players[i].type;
-      const sheet = this.assets.images[t.key];
-      if (sheet && sheet.naturalWidth) {
-        ctx.drawImage(sheet, 0, 4*24, 24, 24, x0, cy, portraitSize, portraitSize);
+      const h = HEROES[i];
+      const x = W/2 + (i - 1.5) * (slotW + 20);
+      const img = Assets.img[h.id];
+      if (img) {
+        // Draw frame at (col 0, row 4 = facing south)
+        const sz = h.frameSize;
+        ctx.drawImage(img, 0, 0 * sz, sz, sz, x - slotW/2, y - slotW/2, slotW, slotW);
       } else {
-        ctx.fillStyle = t.color; ctx.fillRect(x0, cy, portraitSize, portraitSize);
+        ctx.fillStyle = h.color;
+        ctx.fillRect(x - slotW/2, y - slotW/2, slotW, slotW);
       }
-      ctx.fillStyle = t.color; ctx.font = `bold ${u*2}px monospace`; ctx.textAlign = "center";
-      ctx.fillText(t.key.toUpperCase(), x0 + portraitSize/2, cy + portraitSize + u*2);
-      x0 += portraitSize + gap;
+      ctx.fillStyle = h.color;
+      ctx.font = "bold 16px monospace";
+      ctx.fillText(h.id.toUpperCase(), x, y + slotW/2 + 24);
     }
 
-    // Press start text + control reminders.
-    const blink = (Math.floor(this.frame / 20) % 2) === 0;
-    ctx.fillStyle = blink ? "#fff" : "#888";
-    ctx.font = `bold ${u*3}px monospace`; ctx.textAlign = "center";
-    ctx.fillText("PRESS START", W/2, Math.floor(H * 0.84));
+    const blink = Math.floor(this.frame / 30) % 2;
+    ctx.fillStyle = blink ? "#fff" : "#444";
+    ctx.font = "bold 28px monospace";
+    ctx.fillText("PRESS START", W/2, H * 0.86);
 
-    ctx.fillStyle = "#666"; ctx.font = `bold ${u*1.4}px monospace`;
-    ctx.fillText("P1 WASD+G/H    P2 IJKL+;/'    P3 ARROWS+./,    P4 NUMPAD",
-      W/2, Math.floor(H * 0.92));
-    ctx.fillStyle = "#444";
-    ctx.fillText("(C)1985 ATARI GAMES - FAN RECREATION", W/2, Math.floor(H * 0.96));
+    ctx.fillStyle = "#666";
+    ctx.font = "12px monospace";
+    ctx.fillText("P1 WASD+G/H    P2 IJKL+;/'    P3 ARROWS+./,    P4 NUMPAD", W/2, H * 0.92);
 
-    if (this.input.anyPressed()) {
-      this.sounds.music("music_lostcorridors", 0.4);
-      this._startSelect();
-    }
-  }
-
-  _startSelect() {
-    this.state = STATE.SELECT;
-    for (const p of this.players) { p.joined = false; p.score = 0; }
-    this.activeTypes = [null, null, null, null];
-    this._selectIdx = [0, 1, 2, 3];
-  }
-
-  // -------- CHARACTER SELECT --------
-  _select() {
-    const ctx = this.canvas.getContext("2d");
-    const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60));
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#fff"; ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
-    ctx.fillText("CHOOSE YOUR HERO", W/2, u*6);
-    ctx.font = `${u*1.6}px monospace`; ctx.fillStyle = "#aaa";
-    ctx.fillText("Each player ← → to pick, SHOOT to lock in, then ENTER to begin",
-      W/2, u*9);
-
-    const cellW = W / 4;
-    const portraitSize = Math.max(96, Math.floor(H * 0.20 / 24) * 24);
-    const cellTop = u*12;
-    const cellH = H - cellTop - u*8;
-    let anyLocked = false;
-
+    // Any input from any player joins immediately and starts the level
     for (let i = 0; i < 4; i++) {
-      const cmd = this.input.getPlayer(i);
-      if (cmd.dx !== 0 && (this.frame - (this._lastDir?.[i] ?? -100)) > 8) {
-        this._selectIdx[i] = (this._selectIdx[i] + (cmd.dx > 0 ? 1 : -1) + 4) % 4;
-        this._lastDir = this._lastDir || [];
-        this._lastDir[i] = this.frame;
-      }
-      if (cmd.join && this.activeTypes[i] === null) {
-        this.activeTypes[i] = this._selectIdx[i];
-        this.sounds.play("collectkey", 0.4);
-      }
-      if (cmd.magic && this.activeTypes[i] !== null) {
-        this.activeTypes[i] = null;
-      }
-      if (this.activeTypes[i] !== null) anyLocked = true;
-
-      const x = i * cellW;
-      ctx.fillStyle = "rgba(255,255,255,0.04)";
-      ctx.fillRect(x + u, cellTop, cellW - u*2, cellH);
-      ctx.strokeStyle = this.activeTypes[i] !== null ? this.players[this.activeTypes[i]].type.color : "#444";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + u + 1, cellTop + 1, cellW - u*2 - 2, cellH - 2);
-
-      ctx.fillStyle = "#fff"; ctx.font = `bold ${u*2}px monospace`; ctx.textAlign = "center";
-      ctx.fillText(`PLAYER ${i+1}`, x + cellW/2, cellTop + u*3);
-
-      const idx = this._selectIdx[i];
-      const t = PLAYER_TYPES[PLAYER_LIST[idx]];
-      const img = this.assets.images[t.key];
-      const px = x + cellW/2 - portraitSize/2;
-      const py = cellTop + u*5;
-      if (img && img.naturalWidth) {
-        ctx.drawImage(img, 0, 4*24, 24, 24, px, py, portraitSize, portraitSize);
-      } else {
-        ctx.fillStyle = t.color; ctx.fillRect(px, py, portraitSize, portraitSize);
-      }
-      ctx.fillStyle = t.color; ctx.font = `bold ${u*2.2}px monospace`;
-      ctx.fillText(t.key.toUpperCase(), x + cellW/2, py + portraitSize + u*2);
-
-      ctx.fillStyle = "#aaa"; ctx.font = `${u*1.4}px monospace`;
-      ctx.fillText(t.name, x + cellW/2, py + portraitSize + u*4);
-      ctx.fillText(`HP ${t.health}  ARM ${t.armor}  MAG ${t.magic}`, x + cellW/2, py + portraitSize + u*5.5);
-      ctx.fillText(`SPEED ${(t.speed*FPS).toFixed(0)}  SHOT ${(t.weaponSpeed*FPS).toFixed(0)}`, x + cellW/2, py + portraitSize + u*7);
-
-      if (this.activeTypes[i] !== null) {
-        ctx.fillStyle = "#0c0"; ctx.font = `bold ${u*2}px monospace`;
-        ctx.fillText("READY", x + cellW/2, py + portraitSize + u*9.5);
-      } else {
-        ctx.fillStyle = "#777"; ctx.font = `${u*1.4}px monospace`;
-        ctx.fillText("← →  to choose", x + cellW/2, py + portraitSize + u*9);
-        ctx.fillText("SHOOT to lock in", x + cellW/2, py + portraitSize + u*10.4);
-      }
-    }
-
-    ctx.fillStyle = anyLocked ? "#ffe66d" : "#555";
-    ctx.font = `bold ${u*2.4}px monospace`; ctx.textAlign = "center";
-    ctx.fillText(anyLocked ? "Press ENTER to begin" : "At least one player must lock in",
-      W/2, H - u*3);
-
-    const startPressed = this.input.pressed("Enter") || this.input.pressed("Space") || this.input.pressed("NumpadEnter");
-    if (anyLocked && startPressed) {
-      // Assign chosen types and join
-      for (let i = 0; i < 4; i++) {
-        if (this.activeTypes[i] !== null) {
-          this.players[i].type = PLAYER_TYPES[PLAYER_LIST[this.activeTypes[i]]];
-          this.players[i].joined = true;
-          this.players[i].score = 0;
-        } else {
-          this.players[i].joined = false;
-        }
-      }
-      this.levelIndex = 0;
-      this._enterLoading();
-    }
-  }
-
-  _enterLoading() {
-    this.state = STATE.LOADING;
-    this._loadingTimer = FPS * 1.5;
-  }
-
-  // -------- LOADING (level fade-in) --------
-  _loading() {
-    const meta = LEVEL_META[Math.min(this.levelIndex, LEVEL_META.length - 1)];
-    const src = this.assets.levels.find(l => l.name === meta.src);
-    if (!this.level || this.level.src !== src) {
-      this.level = new Level(this, src, meta);
-      this.level.game = this;
-      // place each joined player at a starting position
-      let starts = this.level.starts.slice();
-      if (starts.length === 0) starts = [{ x: CELL_PX*2, y: CELL_PX*2 }];
-      // If we have fewer starts than joined players, fan additional players
-      // out into nearby walkable cells so they don't all spawn stacked.
-      const offsets = [[0,0],[1,0],[0,1],[1,1],[-1,0],[0,-1],[-1,1],[1,-1]];
-      let spawnIdx = 0;
-      for (let i = 0; i < this.players.length; i++) {
-        const p = this.players[i];
-        if (!p.joined) continue;
-        p.level = this.level;
-        const s = starts[Math.min(spawnIdx, starts.length - 1)];
-        const o = offsets[spawnIdx % offsets.length];
-        let nx = s.x + o[0] * CELL_PX, ny = s.y + o[1] * CELL_PX;
-        // If the candidate cell is a wall, fall back to the start.
-        const cell = this.level.cell(nx, ny);
-        if (!cell || cell.wall || cell.nothing) { nx = s.x; ny = s.y; }
-        p.x = nx; p.y = ny;
-        p.exiting = null; p.dead = false;
-        p.health = Math.max(p.health, p.type.health/2);
-        this.level.occupy(p, p.x, p.y);
-        spawnIdx++;
-      }
-      this.sounds.music(meta.music, 0.4);
-      this.sounds.say("Stay frosty. Hostiles inbound.", { cooldown: 30000 });
-    }
-
-    this._updateViewport();
-    this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, meta.name, this.frame);
-
-    const ctx = this.canvas.getContext("2d");
-    const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60));
-    const a = Math.max(0, this._loadingTimer / (FPS * 1.5));
-    ctx.fillStyle = `rgba(0,0,0,${a})`;
-    ctx.fillRect(this.render.layout.game.x, 0, this.render.layout.game.w, H);
-    ctx.fillStyle = `rgba(255,220,80,${a})`;
-    ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
-    ctx.fillText(meta.name, this.render.layout.game.x + this.render.layout.game.w/2, H/2);
-    if (meta.help) {
-      ctx.fillStyle = `rgba(180,200,255,${a*0.9})`;
-      ctx.font = `${u*1.6}px monospace`;
-      ctx.fillText(meta.help, this.render.layout.game.x + this.render.layout.game.w/2, H/2 + u*4);
-    }
-    if (--this._loadingTimer <= 0) this.state = STATE.PLAYING;
-  }
-
-  // -------- PLAYING --------
-  _playing() {
-    // updates
-    for (const p of this.players) p.update(1, this.frame, this.level, this.input);
-    this.level.update(1, this.frame, this.players, this.viewport);
-    this._updateViewport();
-
-    // exit detection
-    const joined = this.players.filter(p => p.joined && !p.dead);
-    if (joined.length === 0) {
-      this.state = STATE.GAMEOVER; this.gameoverTimer = FPS * 4;
-      this.sounds.music(null);
-      this.sounds.play("gameover", 0.6);
-      return;
-    }
-    if (joined.every(p => p.exiting && p.exiting.done)) {
-      // all alive players have exited
-      for (const p of this.players) if (p.joined && !p.dead) p.score += SCORE_PER_LEVEL * (this.levelIndex + 1);
-      this.levelIndex++;
-      if (this.levelIndex >= LEVEL_META.length) {
-        this.state = STATE.GAMEOVER;
-        this.gameoverTimer = FPS * 6;
-        this.sounds.music(null);
-        this.sounds.play("victory", 0.8);
-        this.sounds.say("Victory! You have triumphed!", { cooldown: 0 });
+      const c = Input.getState(i);
+      if (c.confirm || c.shoot || c.up || c.down || c.left || c.right) {
+        this._joinAndStart(i);
         return;
       }
-      this.state = STATE.TRANSITION;
-      this.transitionTimer = FPS * 2;
-      this.sounds.play("exitlevel", 0.7);
-      return;
-    }
-
-    this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, LEVEL_META[this.levelIndex]?.name || "", this.frame);
-  }
-
-  _transition() {
-    const ctx = this.canvas.getContext("2d");
-    const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60));
-    this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-    this.render.drawHud(this.players, this.level, "", this.frame);
-    ctx.fillStyle = `rgba(0,0,0,${1 - this.transitionTimer/(FPS*2)})`;
-    ctx.fillRect(this.render.layout.game.x, 0, this.render.layout.game.w, H);
-    ctx.fillStyle = "#fff8a0"; ctx.font = `bold ${u*4}px monospace`; ctx.textAlign = "center";
-    ctx.fillText("LEVEL CLEAR", this.render.layout.game.x + this.render.layout.game.w/2, H/2 - u);
-    ctx.fillStyle = "#aaa"; ctx.font = `${u*2}px monospace`;
-    ctx.fillText(`+${SCORE_PER_LEVEL * this.levelIndex} bonus`,
-      this.render.layout.game.x + this.render.layout.game.w/2, H/2 + u*3);
-    if (--this.transitionTimer <= 0) {
-      this.level = null;
-      this._enterLoading();
     }
   }
 
-  _gameover() {
-    const ctx = this.canvas.getContext("2d");
-    const W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(8, Math.floor(H / 60));
-    if (this.level) {
-      this.render.drawWorld(this.level, this.viewport, this.frame, this.players);
-      this.render.drawHud(this.players, this.level, "", this.frame);
-    } else {
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  _select(_dt) { /* not used in this minimal build — title joins straight in */ }
+
+  _joinAndStart(starterSlot) {
+    this.players[starterSlot].joined = true;
+    this.levelIdx = 0;
+    // Prefer ROM levels (skip the 17 trainer slots whose files don't exist).
+    // Index 17 is level-001.png — the garbage $0003 entry from the pointer
+    // table — so start at 18 (the real maze001 at ROM ptr $833d).
+    if (Assets.levelManifest && Assets.levelManifest.levels?.length) {
+      this.levelIdx = 18;
     }
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#ff4040"; ctx.font = `bold ${u*7}px monospace`; ctx.textAlign = "center";
-    ctx.fillText("GAME OVER", W/2, H/2 - u*2);
-    ctx.fillStyle = "#fff"; ctx.font = `bold ${u*2.5}px monospace`;
-    let topScore = 0, topName = "";
-    for (const p of this.players) if (p.joined && p.score > topScore) { topScore = p.score; topName = p.type.key.toUpperCase(); }
-    ctx.fillText(`HIGH: ${topName} ${topScore}`, W/2, H/2 + u*2);
-    ctx.fillStyle = "#888"; ctx.font = `${u*1.8}px monospace`;
-    ctx.fillText("Press any key for title", W/2, H/2 + u*5);
-    if (--this.gameoverTimer <= 0 && this.input.anyPressed()) {
-      this.level = null;
-      this.state = STATE.TITLE;
-    }
+    this._loadLevel(this.levelIdx);
   }
 
-  _refreshViewportSize() {
-    // Camera viewport sees `worldW × worldH` of world pixels (the renderer
-    // scales them up to fill the centre column).
-    this.render.resize();
-    this.viewport.w = this.render.layout.worldW;
-    this.viewport.h = this.render.layout.worldH;
+  async _loadLevel(idx) {
+    this._setState(STATE.LOADING);
+    try {
+      this.level = await LevelLoader.loadLevel(idx);
+    } catch (e) {
+      // Skip missing trainer levels by hopping to the next index.
+      console.warn(`[Game] Level ${idx} failed to load: ${e.message}`);
+      if (idx + 1 < LevelLoader.count) { this._loadLevel(idx + 1); return; }
+      this._setState(STATE.GAMEOVER); return;
+    }
+    this.levelIdx = idx;
+    this.mgr.initFromLevel(this.level, 0);
+    // Place each joined player at the first spawn (offset slightly for multi-player)
+    const spawn = this.level.spawns[0] || { col: 1, row: 1 };
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.joined) continue;
+      // Offset multi-player spawns by tile units, falling back to spawn if blocked.
+      const offsets = [[0,0],[1,0],[0,1],[1,1]];
+      const [oc, or] = offsets[i] || [0,0];
+      const nc = spawn.col + oc, nr = spawn.row + or;
+      if (!this.level.isBlocked(nc, nr)) p.spawnAt(nc, nr);
+      else                                p.spawnAt(spawn.col, spawn.row);
+    }
+    this._setState(STATE.PLAYING);
   }
 
-  _updateViewport() {
-    if (!this.level) return;
-    let cx = 0, cy = 0, n = 0;
+  _loading(_dt) {
+    const ctx = this.ctx;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+    ctx.font = "bold 32px monospace";
+    ctx.fillText(`LOADING LEVEL ${this.levelIdx + 1}`, this.canvas.width/2, this.canvas.height/2);
+  }
+
+  _playing(dt) {
+    // 1. Player input → players
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.joined) continue;
+      const cmd = Input.getState(i);
+      p.update(dt, cmd, this.level, this.mgr);
+    }
+
+    // 2. Entities (monsters, generators, projectiles, fx)
+    this.mgr.update(dt, this.level, this.players);
+
+    // 3. Collisions: monsters touch players
+    for (const e of this.mgr.entities) {
+      if (!(e instanceof Monster) || e.dead) continue;
+      for (const p of this.players) {
+        if (!p.joined || p.dead) continue;
+        if (e.overlaps(p, 10)) p.hurt(e.meleeDamage);
+      }
+    }
+
+    // 4. Projectiles hit monsters / players
+    for (const e of this.mgr.entities) {
+      if (!(e instanceof Projectile) || e.dead) continue;
+      if (e.owner === "player") {
+        for (const m of this.mgr.entities) {
+          if (!(m instanceof Monster) || m.dead) continue;
+          if (e.overlaps(m, 12)) {
+            const score = m.hit();
+            if (score > 0) {
+              // attribute to nearest joined player (simple version: first joined)
+              const owner = this.players.find(p => p.joined);
+              if (owner) owner.score += score;
+            }
+            e.dead = true;
+            break;
+          }
+        }
+        // Also damage generators on direct hit
+        if (!e.dead) {
+          for (const g of this.mgr.entities) {
+            if (!(g instanceof Generator) || g.dead) continue;
+            if (e.overlaps(g, 12)) {
+              g.hp = (g.hp ?? 5) - 1;
+              if (g.hp <= 0) { g.dead = true; const owner = this.players.find(p => p.joined); if (owner) owner.score += 250; }
+              e.dead = true;
+              break;
+            }
+          }
+        }
+      } else if (e.owner === "monster") {
+        for (const p of this.players) {
+          if (!p.joined || p.dead) continue;
+          if (e.overlaps(p, 12)) {
+            p.hurt(e.damage || 5);
+            e.dead = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // 5. Exit detection: any joined player standing on an exit
     for (const p of this.players) {
-      if (p.joined) { cx += p.x + CELL_PX/2; cy += p.y + CELL_PX/2; n++; }
+      if (!p.joined || p.dead) continue;
+      const tile = this.level.tileAt(p.tileCol, p.tileRow);
+      if (!tile) continue;
+      if (tile.type === T.EXIT || tile.type === T.EXIT_WARP4 || tile.type === T.EXIT_WARP8) {
+        this.transTimer = 600;
+        this._setState(STATE.TRANSITION);
+        break;
+      }
     }
-    if (n === 0) return;
-    cx /= n; cy /= n;
-    const targetX = cx - this.viewport.w/2;
-    const targetY = cy - this.viewport.h/2;
-    this.viewport.x += (targetX - this.viewport.x) * 0.18;
-    this.viewport.y += (targetY - this.viewport.y) * 0.18;
-    this.viewport.x = Math.max(0, Math.min(this.level.w - this.viewport.w, this.viewport.x));
-    this.viewport.y = Math.max(0, Math.min(this.level.h - this.viewport.h, this.viewport.y));
+
+    // 6. Game-over: all joined players dead
+    const anyAlive = this.players.some(p => p.joined && !p.dead);
+    if (!anyAlive) {
+      this._setState(STATE.GAMEOVER);
+    }
+
+    // 7. Render
+    this.render.drawFrame(this.level, this.players, this.mgr, this.frame);
+  }
+
+  _transition(dt) {
+    this.transTimer -= dt;
+    const ctx = this.ctx;
+    this.render.drawFrame(this.level, this.players, this.mgr, this.frame);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+    ctx.font = "bold 32px monospace";
+    ctx.fillText(`LEVEL ${this.levelIdx + 1} CLEARED`, this.canvas.width/2, this.canvas.height/2);
+
+    if (this.transTimer <= 0) {
+      const next = this.levelIdx + 1;
+      if (next >= LevelLoader.count) { this._setState(STATE.GAMEOVER); return; }
+      this._loadLevel(next);
+    }
+  }
+
+  _gameover(_dt) {
+    const ctx = this.ctx;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+    ctx.font = "bold 64px monospace";
+    ctx.fillText("GAME OVER", this.canvas.width/2, this.canvas.height/2);
+    ctx.font = "bold 16px monospace";
+    ctx.fillStyle = "#888";
+    ctx.fillText("PRESS ANY KEY", this.canvas.width/2, this.canvas.height/2 + 48);
+
+    for (let i = 0; i < 4; i++) {
+      const c = Input.getState(i);
+      if (c.confirm || c.shoot) {
+        // reset and back to title
+        this.players = [
+          new Player(0, 0), new Player(1, 1), new Player(2, 2), new Player(3, 3),
+        ];
+        this.mgr = new EntityManager();
+        this.level = null;
+        this.levelIdx = 0;
+        this._setState(STATE.TITLE);
+        return;
+      }
+    }
   }
 }

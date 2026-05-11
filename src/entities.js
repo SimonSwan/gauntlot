@@ -1,340 +1,692 @@
-// All non-player entities: Monster, Generator, Treasure, Door, Exit, Weapon, Fx.
-import {
-  CELL_PX, FPS, DIR, DIR_VEC, CBOX,
-  PREFERRED_DIRECTIONS, isVertical, isHorizontal, isDiagonal,
-} from "./constants.js";
+/**
+ * src/entities.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * All non-player game entities for Gauntlet (1985) recreation.
+ *
+ * ENTITY TYPES:
+ *   Monster   — Ghosts, Grunts, Demons, Sorcerers, Lobbers, Death, Thieves.
+ *   Generator — Spawns monsters.  Has HP; can be destroyed.
+ *   Projectile — Player shots and monster shots.
+ *   Item      — Collectible objects (food, potions, keys, treasure, power-ups).
+ *   Door      — Gate tile (interactive; opens with key).
+ *   Fx        — Visual effects (explosions, teleport flashes).
+ *
+ * MONSTER AI (PLACEHOLDER — exact ROM routines not decoded yet):
+ *   All monsters move toward the nearest player using a simplified
+ *   preferred-direction system:
+ *     1. Compute vector to nearest player.
+ *     2. Pick the axis with the larger component (preferred direction).
+ *     3. If blocked, try the other axis (sliding).
+ *     4. If both blocked, pick a random perpendicular direction.
+ *   Ghosts ignore walls (pass through them).  CONFIRMED behaviour.
+ *   Death cannot be killed by shots — only magic.  CONFIRMED behaviour.
+ *
+ * DAMAGE VALUES: All from ATT (attract-screen) analysis.  See constants.js.
+ *
+ * COLLISION:
+ *   Tile-based.  An entity occupies the tile at its centre point.
+ *   For movement, we check the destination tile before moving.
+ *   Entity-entity collision uses a simple circular overlap test
+ *   (radius = half sprite size = 12px for 24px sprites).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
-let _id = 0;
-const nextId = () => ++_id;
+import { MON, DMG, TIME, SCORE, RENDER, DIR, DIR_VEC } from './constants.js';
+import { T as TILE_T } from './level.js';
+
+// Upper-case monster names for SCORE table lookup
+const MON_NAME_UC = ['GHOST','DEMON','GRUNT','SORCERER','LOBBER','DEATH','THIEF'];
+
+// ── Unique ID generator ───────────────────────────────────────────────────────
+let _nextId = 1;
+function uid() { return _nextId++; }
+
+// ── Base entity ───────────────────────────────────────────────────────────────
 
 class Entity {
-  constructor() {
-    this.id = nextId();
-    this.x = 0; this.y = 0;
-    this.dead = false;
-    this.cells = [];
-    this.dir = DIR.DOWN;
-    this.cbox = CBOX.FULL;
-    this.frame = 0;
+  /**
+   * @param {number} wx   World X in pixels (top-left of sprite)
+   * @param {number} wy   World Y in pixels (top-left of sprite)
+   */
+  constructor(wx, wy) {
+    this.id      = uid();
+    this.wx      = wx;   // World position X
+    this.wy      = wy;   // World position Y
+    this.dead    = false; // True = remove from simulation next frame
+  }
+
+  /** Centre X in world pixels */
+  get cx() { return this.wx + 12; }
+  /** Centre Y in world pixels */
+  get cy() { return this.wy + 12; }
+  /** Current tile column */
+  get tileCol() { return Math.floor(this.cx / 16); }
+  /** Current tile row */
+  get tileRow()  { return Math.floor(this.cy / 16); }
+
+  /**
+   * Distance to another entity (centre to centre).
+   */
+  distTo(other) {
+    const dx = this.cx - other.cx;
+    const dy = this.cy - other.cy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * True if this entity's hitbox overlaps another's.
+   * @param {Entity} other
+   * @param {number} [radius]  Overlap radius in pixels (default 10)
+   */
+  overlaps(other, radius = 10) {
+    return this.distTo(other) < radius;
   }
 }
+
+// ── Monster ───────────────────────────────────────────────────────────────────
 
 export class Monster extends Entity {
-  constructor(x, y, type, generator = null) {
-    super();
-    this.x = x; this.y = y;
-    this.monster = true;
-    this.type = type;
-    this.generator = generator;
-    this.cbox = CBOX.MONSTER;
-    this.dir = (Math.random() * 8) | 0;
-    this.health = type.health;
-    this.thinking = 0;
-    this.travelling = 0;
-    this.reloading = 0;
-    this.df = (Math.random() * 100) | 0;
+  /**
+   * @param {number} wx
+   * @param {number} wy
+   * @param {number} monType   One of MON.* constants
+   * @param {number} level     1/2/3 — controls damage dealt and HP
+   * @param {number} theme     0/1/2 — dungeon theme (selects sprite palette)
+   */
+  constructor(wx, wy, monType, level = 1, theme = 0) {
+    super(wx, wy);
+    this.monType = monType;
+    this.level   = level;   // 1/2/3 = L1/L2/L3
+    this.theme   = theme;   // 0/1/2 = dungeon theme (sprite colour variant)
+
+    // HP = shots required to kill (from ATT CONFIRMED data)
+    this.hp      = DMG.SHOTS_TO_KILL[level - 1]; // L1=1, L2=2, L3=3
+
+    this.dir     = DIR.S;   // Facing direction (0–7)
+    this.animFrame = 0;     // Current animation frame column within sprite row
+    this.animTimer = 0;     // ms until next animation frame
+
+    // AI state
+    this.moveTimer = 0;     // ms until next position update
+    this.shotTimer = 0;     // ms until next shot (demons/lobbers only)
+    this.stuckTimer = 0;    // ms we've been stuck (for random-direction escape)
+
+    // Speed in px/s  [PLACEHOLDER]
+    const speeds = {
+      [MON.GHOST]:    TIME.GHOST_SPEED_PX,
+      [MON.GRUNT]:    TIME.GRUNT_SPEED_PX,
+      [MON.DEMON]:    TIME.DEMON_SPEED_PX,
+      [MON.SORCERER]: TIME.SORCERER_SPEED_PX,
+      [MON.LOBBER]:   TIME.LOBBER_SPEED_PX,
+      [MON.DEATH]:    TIME.DEATH_SPEED_PX,
+      [MON.THIEF]:    TIME.THIEF_SPEED_PX,
+    };
+    this.speed = speeds[monType] ?? TIME.GRUNT_SPEED_PX;
   }
 
-  update(dt, frame, players, level, viewport) {
-    // skip if no players and we are far from screen
-    if (viewport && viewport.outside(this.x - viewport.w, this.y - viewport.h, 2*viewport.w, 2*viewport.h)) return;
-    if (this.reloading > 0) this.reloading--;
-    if (this.thinking > 0) { this.thinking--; return; }
-
-    const target = nearestPlayer(this, players);
-    if (!target) return;
-
-    const away = !target.alive();
-    const speed = away ? 1 : this.type.speed;
-
-    if (this.travelling > 0) {
-      this.travelling--;
-      this.step(level, target, this.dir, speed, this.travelling, !away);
-      return;
-    }
-
-    const dirs = PREFERRED_DIRECTIONS[directionTo(this, target, away)];
-    for (let n = 0; n < dirs.length; n++) {
-      if (this.step(level, target, dirs[n], speed, n < 2 ? 0 : this.type.travelling * (n - 2), !away)) return;
-    }
+  /**
+   * Melee damage dealt to a player per contact frame.
+   * [ATT CONFIRMED for all types]
+   */
+  get meleeDamage() {
+    const table = {
+      [MON.GHOST]:    DMG.GHOST,
+      [MON.GRUNT]:    DMG.GRUNT,
+      [MON.DEMON]:    DMG.DEMON,
+      [MON.SORCERER]: DMG.SORCERER,
+      [MON.DEATH]:    DMG.DEATH,
+      [MON.THIEF]:    DMG.THIEF,
+      [MON.LOBBER]:   [0, 0, 0], // Lobber doesn't fight, only shoots
+    };
+    return (table[this.monType] ?? DMG.GRUNT)[this.level - 1];
   }
 
-  step(level, target, dir, speed, travelling, allowFire) {
-    const collision = level.trymove(this, dir, speed);
-    if (!collision) {
-      this.dir = dir;
-      if (allowFire && this.type.weapon && this.fire(level, target)) {
-        this.thinking = this.type.thinking;
-        this.travelling = 0;
-      } else {
-        this.thinking = 0;
-        this.travelling = travelling;
-      }
-      return true;
-    } else if (collision.player) {
-      // collide with a player: damage the player, take self-harm if applicable
-      collision.hurt(this.type.damage, this);
-      if (this.type.steals && collision.keys + collision.potions > 0) {
-        if (collision.keys > 0) collision.keys--;
-        else collision.potions--;
-        this.stole = true;
-        this.dead = true; // thief escapes
-        if (level.game) level.game.events.emit("thiefSteal", this, collision);
-      }
-      if (this.type.selfharm) this.health = Math.max(0, this.health - this.type.selfharm);
-      return true;
-    }
-    if (speed > 1) return this.step(level, target, dir, 1, travelling, allowFire);
-    this.thinking = this.type.thinking;
-    this.travelling = 0;
-    return false;
+  /**
+   * Can this monster walk through stone walls?
+   * Only Ghosts can.  CONFIRMED.
+   */
+  get canPhase() { return this.monType === MON.GHOST; }
+
+  /**
+   * Can this monster be killed by player shots?
+   * Death cannot — only magic.  CONFIRMED.
+   */
+  get canBeShot() { return this.monType !== MON.DEATH; }
+
+  /**
+   * Does this monster shoot projectiles?
+   */
+  get doesShoot() {
+    return this.monType === MON.DEMON || this.monType === MON.LOBBER;
   }
 
-  fire(level, target) {
-    if (!this.type.weapon || this.reloading > 0) return false;
-    const dx = Math.abs(Math.floor(this.x / CELL_PX) - Math.floor(target.x / CELL_PX));
-    const dy = Math.abs(Math.floor(this.y / CELL_PX) - Math.floor(target.y / CELL_PX));
-    const dd = Math.abs(dx - dy);
-    if (((dx < 2) && isVertical(this.dir)) ||
-        ((dy < 2) && isHorizontal(this.dir)) ||
-        ((dd < 2) && isDiagonal(this.dir))) {
-      this.reloading = this.type.weapon.reload;
-      const w = new Weapon(this.x, this.y, this.type.weapon, this.dir, this);
-      w.monster = true;
-      level.add(w);
-      level.game?.sounds.play("monsterdeath2", 0.15); // fireball whoosh placeholder
-      return true;
-    }
-    return false;
-  }
-
-  hurt(damage, by, nuke = false) {
-    if (nuke || (by?.weapon && this.type.canBeShot) || (by?.player && this.type.canBeHit) || by === this) {
-      this.health = Math.max(0, this.health - damage);
-      if (this.health === 0) this.die(by?.player ? by : (by?.weapon && by.owner?.player ? by.owner : null), nuke);
-    }
-  }
-
-  die(by, nuke) {
-    if (this.generator) this.generator.count = Math.max(0, this.generator.count - 1);
-    this.dead = true;
-    if (by) by.score += this.type.score;
-    const lvl = this.level;
-    lvl.add(new Fx(this.x, this.y, "monsterDeath", nuke ? FPS/2 : FPS/6));
-    lvl.game?.sounds.play(`monsterdeath${1 + (Math.random()*3|0)}`, 0.25);
-  }
-}
-
-export class Generator extends Entity {
-  constructor(x, y, monsterType) {
-    super();
-    this.x = x; this.y = y;
-    this.generator = true;
-    this.mtype = monsterType;
-    this.type = monsterType.generator || { health: 8, rate: 3*FPS, max: 20, score: 100 };
-    this.health = this.type.health;
-    this.maxHealth = this.type.health;
-    this.pending = 0;
-    this.count = 0;
-    this.cbox = CBOX.FULL;
-  }
-
-  update(dt, frame, players, level) {
-    if (this.count >= this.type.max) return;
-    if (--this.pending > 0) return;
-    const d = (Math.random() * 8) | 0;
-    const pos = level.canmove(this, d, CELL_PX);
-    if (pos) {
-      const m = new Monster(pos.x, pos.y, this.mtype, this);
-      level.add(m);
-      this.count++;
-      this.pending = 1 + ((Math.random() * this.type.rate) | 0);
-    } else {
-      this.pending = FPS/4;
-    }
-  }
-
-  hurt(damage, by) {
-    this.health = Math.max(0, this.health - damage);
-    if (this.health === 0) {
+  /**
+   * Take a player shot hit.
+   * Decrements HP.  Sets dead=true when HP reaches 0.
+   * Returns score value if killed, 0 if just damaged.
+   * Note: Death returns 0 (cannot be killed this way).
+   */
+  hit() {
+    if (!this.canBeShot) return 0;
+    this.hp--;
+    if (this.hp <= 0) {
       this.dead = true;
-      if (by?.player) by.score += this.type.score;
-      else if (by?.weapon && by.owner?.player) by.owner.score += this.type.score;
-      this.level.add(new Fx(this.x, this.y, "explosion", 0));
-      this.level.game?.sounds.play("generatordeath", 0.4);
+      return SCORE[`KILL_${MON_NAME_UC[this.monType]}`] ?? SCORE.KILL_GRUNT;
+    }
+    return 0;
+  }
+
+  /**
+   * Update AI and animation.
+   * @param {number}          dt       Delta time in ms
+   * @param {Level}           level    Current level (for collision)
+   * @param {Entity[]}        players  Live player entities for targeting
+   * @param {EntityManager}   mgr      Entity manager (for spawning shots)
+   */
+  update(dt, level, players, mgr) {
+    this._updateAnimation(dt);
+    this._updateAI(dt, level, players, mgr);
+  }
+
+  /** @private */
+  _updateAnimation(dt) {
+    this.animTimer += dt;
+    if (this.animTimer >= TIME.ANIM_FRAME_MS) {
+      this.animTimer -= TIME.ANIM_FRAME_MS;
+      // Number of animation frames per direction row depends on sheet
+      const maxFrames = {
+        [MON.GHOST]:    4,
+        [MON.GRUNT]:    5,
+        [MON.DEMON]:    8,
+        [MON.SORCERER]: 6,
+        [MON.LOBBER]:   5,
+        [MON.DEATH]:    3,
+        [MON.THIEF]:    9,
+      }[this.monType] ?? 4;
+      this.animFrame = (this.animFrame + 1) % maxFrames;
     }
   }
-}
 
-export class Treasure extends Entity {
-  constructor(x, y, type) {
-    super();
-    this.x = x; this.y = y;
-    this.treasure = true;
-    this.type = type;
-    this.cbox = CBOX.FULL;
-  }
-  collect(player) {
-    if (this.dead) return;
-    this.dead = true;
-    player.score += this.type.score;
-    if (this.type.take === "key") player.keys = Math.min(player.keys + 1, 9);
-    else if (this.type.take === "potion") player.potions = Math.min(player.potions + 1, 9);
-    if (this.type.health) player.heal(this.type.health);
-    if (this.type.damage) player.hurt(this.type.damage, this, true);
-    this.level.game?.sounds.play(this.type.sound, 0.5);
-  }
-}
+  /** @private */
+  _updateAI(dt, level, players, mgr) {
+    if (players.length === 0) return;
 
-export class Door extends Entity {
-  constructor(x, y, type) {
-    super();
-    this.x = x; this.y = y;
-    this.door = true;
-    this.type = type;
-    this.cbox = CBOX.FULL;
-    this.opening = 0;
-  }
-  open(speed = 0) {
-    if (this.opening) return false;
-    this.opening = (speed | 0) + this.type.openSpeed;
-    this.level.game?.sounds.play("opendoor", 0.3);
-    // chain to neighbouring doors
-    for (const [dx, dy] of [[-CELL_PX,0],[CELL_PX,0],[0,-CELL_PX],[0,CELL_PX]]) {
-      const c = this.level.cell(this.x + dx, this.y + dy);
-      if (!c) continue;
-      const next = c.occupied.find(e => e.door && !e.opening);
-      if (next) next.opening = (this.opening | 0);
+    // Target: nearest living player
+    let nearest = null, nearestDist = Infinity;
+    for (const p of players) {
+      if (p.dead) continue;
+      const d = this.distTo(p);
+      if (d < nearestDist) { nearest = p; nearestDist = d; }
     }
+    if (!nearest) return;
+
+    // ── Shooting (Demon and Lobber) ──────────────────────────────────────────
+    if (this.doesShoot) {
+      this.shotTimer -= dt;
+      if (this.shotTimer <= 0) {
+        // Reset shot timer  [PLACEHOLDER rate]
+        this.shotTimer = this.monType === MON.DEMON ? 2000 : 2500;
+        // Only shoot if player is in line of sight (simplification: range check)
+        if (nearestDist < 200) {
+          this._shoot(nearest, mgr);
+        }
+      }
+    }
+
+    // ── Movement ────────────────────────────────────────────────────────────
+    // Move continuously based on speed (not tile-snapped)  [PLACEHOLDER AI]
+    const pxPerMs = this.speed / 1000;
+    const distToMove = pxPerMs * dt;
+
+    const ddx = nearest.cx - this.cx;
+    const ddy = nearest.cy - this.cy;
+    const len = Math.sqrt(ddx * ddx + ddy * ddy);
+    if (len < 1) return;
+
+    const nx = (ddx / len) * distToMove;
+    const ny = (ddy / len) * distToMove;
+
+    // Preferred direction: larger component moves first
+    let moved = false;
+    if (Math.abs(nx) >= Math.abs(ny)) {
+      moved = this._tryMove(nx, 0, level) || this._tryMove(0, ny, level);
+    } else {
+      moved = this._tryMove(0, ny, level) || this._tryMove(nx, 0, level);
+    }
+
+    // Update facing direction
+    if (ddx > 4)       this.dir = ddy > 4 ? DIR.SE : ddy < -4 ? DIR.NE : DIR.E;
+    else if (ddx < -4) this.dir = ddy > 4 ? DIR.SW : ddy < -4 ? DIR.NW : DIR.W;
+    else               this.dir = ddy > 4 ? DIR.S  : DIR.N;
+
+    if (!moved) {
+      this.stuckTimer += dt;
+      // If stuck for 500ms, try a random perpendicular direction  [PLACEHOLDER]
+      if (this.stuckTimer > 500) {
+        this.stuckTimer = 0;
+        const perp = Math.random() < 0.5 ? { x: -ny, y: nx } : { x: ny, y: -nx };
+        this._tryMove(perp.x, perp.y, level);
+      }
+    } else {
+      this.stuckTimer = 0;
+    }
+  }
+
+  /**
+   * Try to move by (dx, dy) pixels.  Returns true if movement succeeded.
+   * Ghosts ignore walls.  Others are blocked by walls and locked gates.
+   * @private
+   */
+  _tryMove(dx, dy, level) {
+    const nx = this.wx + dx;
+    const ny = this.wy + dy;
+    const nc = Math.floor((nx + 12) / 16);
+    const nr = Math.floor((ny + 12) / 16);
+
+    if (this.canPhase) {
+      // Ghosts: only blocked by level boundaries
+      if (nc < 0 || nc >= 32 || nr < 0 || nr >= 32) return false;
+    } else {
+      if (level.isBlocked(nc, nr)) return false;
+    }
+
+    this.wx = nx;
+    this.wy = ny;
     return true;
   }
-  update() {
-    if (this.opening > 0 && --this.opening === 0) this.dead = true;
+
+  /**
+   * Spawn a projectile toward the target player.
+   * @private
+   */
+  _shoot(target, mgr) {
+    const ddx = target.cx - this.cx;
+    const ddy = target.cy - this.cy;
+    const len = Math.sqrt(ddx * ddx + ddy * ddy);
+    if (len < 1) return;
+
+    const isLobber = this.monType === MON.LOBBER;
+    const dmg = isLobber
+      ? DMG.LOBBER_SHOT[this.level - 1]
+      : DMG.DEMON_SHOT[this.level - 1];
+
+    mgr.add(new Projectile(
+      this.cx - 4, this.cy - 4,   // origin
+      (ddx / len) * (isLobber ? TIME.DEMON_SHOT_SPEED * 0.8 : TIME.DEMON_SHOT_SPEED) / 1000,
+      (ddy / len) * (isLobber ? TIME.DEMON_SHOT_SPEED * 0.8 : TIME.DEMON_SHOT_SPEED) / 1000,
+      'monster',
+      dmg,
+      isLobber,
+    ));
   }
 }
 
-export class Exit extends Entity {
-  constructor(x, y) {
-    super();
-    this.x = x; this.y = y;
-    this.exit = true;
-    this.cbox = CBOX.FULL;
-  }
-}
+// ── Generator ─────────────────────────────────────────────────────────────────
 
-export class Weapon extends Entity {
-  constructor(x, y, type, dir, owner) {
-    super();
-    this.x = x; this.y = y;
-    this.weapon = true;
-    this.temporal = true;
-    this.type = type;
-    this.dir = dir;
-    this.owner = owner;
-    this.cbox = CBOX.WEAPON;
-    this.life = FPS * 2;
+export class Generator extends Entity {
+  /**
+   * @param {number} wx
+   * @param {number} wy
+   * @param {number} monType   Monster type this generates
+   * @param {number} level     1/2/3 — L1/L2/L3 (selects generator frame + monster level)
+   * @param {number} theme     Dungeon theme (0/1/2) for monster colour variant
+   */
+  constructor(wx, wy, monType, level = 1, theme = 0) {
+    super(wx, wy);
+    this.monType     = monType;
+    this.level       = level;
+    this.theme       = theme;
+    this.hp          = DMG.GEN_HP[level - 1];    // Shots to destroy  [PLACEHOLDER]
+    this.spawnTimer  = TIME.GEN_SPAWN_INTERVAL_MS * (0.5 + Math.random()); // Stagger spawns
+    this.spawnCount  = 0;
+    this.animFrame   = level - 1;  // Frame 0=L1, 1=L2, 2=L3  CONFIRMED (ghost gen sprite)
   }
-  update(dt, frame, players, level) {
-    if (--this.life <= 0) { this.dead = true; return; }
-    const dv = DIR_VEC[this.dir];
-    const speed = this.type.speed;
-    // Subdivide movement into 4-pixel steps so fast shots don't tunnel through
-    // narrow walls between frames.
-    const steps = Math.max(1, Math.ceil(speed / 4));
-    const stepX = (dv[0] * speed) / steps;
-    const stepY = (dv[1] * speed) / steps;
-    for (let s = 0; s < steps; s++) {
-      const nx = this.x + stepX, ny = this.y + stepY;
-      // Pass through anything that should never stop a shot: doors, exits,
-      // treasures, the projectile owner, other player projectiles fired by
-      // the same side, players themselves when fired by another player.
-      const collision = level.occupied(nx + this.cbox.x, ny + this.cbox.y, this.cbox.w, this.cbox.h, this.owner);
-      this.x = nx; this.y = ny;
-      if (!collision) continue;
-      if (collision === true) { // wall
-        this.dead = true;
-        level.add(new Fx(nx, ny, "explosion"));
-        return;
-      }
-      // pass-throughs: doors, exits, treasures
-      if (collision.door || collision.exit || collision.treasure) continue;
-      // pass-through: another shot from same side
-      if (collision.weapon) {
-        if ((this.owner.player && collision.owner?.player) ||
-            (this.owner.monster && collision.owner?.monster)) continue;
-        collision.dead = true;
-        this.dead = true;
-        level.add(new Fx(nx, ny, "explosion"));
-        return;
-      }
-      // pass-through: same-side player friendly fire
-      if (collision.player && this.owner.player) continue;
-      // pass-through: monster shooting another monster (no friendly fire)
-      if (collision.monster && this.owner.monster) continue;
 
-      // Damage time
-      if (this.owner.player && (collision.monster || collision.generator)) {
-        collision.hurt(this.type.damage, this);
-      } else if (this.owner.monster && collision.player) {
-        collision.hurt(this.type.damage, this);
-      } else {
-        // Unrecognized entity — pass through harmlessly rather than create
-        // an "invisible wall" that vanishes the shot for no reason.
-        continue;
+  /** True if this is a ghost generator (skull-cage sprite) */
+  get isGhostGen() { return this.monType === MON.GHOST; }
+
+  /**
+   * @param {number}        dt
+   * @param {EntityManager} mgr
+   */
+  update(dt, mgr) {
+    this.spawnTimer -= dt;
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = TIME.GEN_SPAWN_INTERVAL_MS;
+      this.spawnCount++;
+      if (this.spawnCount <= TIME.GEN_MAX_SPAWN) {
+        this._spawnMonster(mgr);
       }
+    }
+  }
+
+  /**
+   * Take a player shot hit.  Returns score if destroyed.
+   */
+  hit() {
+    this.hp--;
+    if (this.hp <= 0) {
       this.dead = true;
-      level.add(new Fx(nx, ny, "explosion"));
-      return;
+      return SCORE.DESTROY_GEN;
+    }
+    return 0;
+  }
+
+  /** @private */
+  _spawnMonster(mgr) {
+    // Spawn at generator position, offset slightly to avoid spawning inside the generator
+    const offsets = [
+      {dx: -16, dy: 0}, {dx: 16, dy: 0},
+      {dx: 0, dy: -16}, {dx: 0, dy: 16},
+    ];
+    const off = offsets[Math.floor(Math.random() * offsets.length)];
+    mgr.add(new Monster(
+      this.wx + off.dx,
+      this.wy + off.dy,
+      this.monType,
+      this.level,
+      this.theme,
+    ));
+  }
+}
+
+// ── Projectile ────────────────────────────────────────────────────────────────
+
+export class Projectile extends Entity {
+  /**
+   * @param {number}  wx
+   * @param {number}  wy
+   * @param {number}  vx       Velocity X in px/ms
+   * @param {number}  vy       Velocity Y in px/ms
+   * @param {string}  owner    'player' or 'monster'
+   * @param {number}  damage   HP damage on hit
+   * @param {boolean} isLobbed True for lobber arcing shots (unused currently)
+   */
+  constructor(wx, wy, vx, vy, owner, damage, isLobbed = false) {
+    super(wx, wy);
+    this.vx       = vx;
+    this.vy       = vy;
+    this.owner    = owner;
+    this.damage   = damage;
+    this.isLobbed = isLobbed;
+    this.lifetime = 3000; // ms before auto-removal  [PLACEHOLDER]
+  }
+
+  /**
+   * @param {number} dt
+   * @param {Level}  level
+   */
+  update(dt, level) {
+    this.wx += this.vx * dt;
+    this.wy += this.vy * dt;
+    this.lifetime -= dt;
+    if (this.lifetime <= 0) { this.dead = true; return; }
+
+    // Off-grid? die so shots can't accumulate when fired toward open level edges
+    const col = Math.floor(this.cx / 16);
+    const row = Math.floor(this.cy / 16);
+    if (col < 0 || col >= 32 || row < 0 || row >= 32) { this.dead = true; return; }
+    if (level.isBlocked(col, row)) { this.dead = true; }
+  }
+}
+
+// ── Item ──────────────────────────────────────────────────────────────────────
+
+export class Item extends Entity {
+  /**
+   * @param {number} wx
+   * @param {number} wy
+   * @param {string} itemKind  One of: 'food_turkey','food_ham','food_jug',
+   *                           'food_drumstick','key','potion_magic','invisibility',
+   *                           'treasure_chest','treasure_bag','plus_armor',
+   *                           'plus_speed','plus_magic','plus_shot_pow',
+   *                           'plus_shot_spd','plus_fight'
+   * @param {number} [hpValue] For food items, HP restored  [PLACEHOLDER]
+   */
+  constructor(wx, wy, itemKind, hpValue = DMG.FOOD_HP) {
+    super(wx, wy);
+    this.itemKind  = itemKind;
+    this.hpValue   = hpValue;
+    this.collected = false;
+  }
+
+  /**
+   * Is this item food (gives HP)?
+   */
+  get isFood() {
+    return this.itemKind.startsWith('food_');
+  }
+
+  /**
+   * Is this item a power-up (permanently improves a stat)?
+   */
+  get isPowerUp() {
+    return this.itemKind.startsWith('plus_');
+  }
+
+  /**
+   * Collect this item by a player.
+   * Returns a descriptor of what happened (caller handles effects).
+   * @param {object} player
+   * @returns {{ type: string, value: number }}
+   */
+  collect(player) {
+    if (this.collected) return null;
+    this.collected = true;
+    this.dead      = true;
+
+    switch (this.itemKind) {
+      case 'food_turkey':
+      case 'food_ham':
+      case 'food_jug':
+      case 'food_drumstick':
+        return { type: 'food', value: this.hpValue };
+      case 'key':
+        return { type: 'key', value: 1 };
+      case 'potion_magic':
+        return { type: 'potion', value: 1 };
+      case 'invisibility':
+        return { type: 'invisibility', value: 30000 }; // 30 seconds  [PLACEHOLDER]
+      case 'treasure_chest':
+        return { type: 'score', value: SCORE.COLLECT_CHEST };
+      case 'treasure_bag':
+        return { type: 'score', value: SCORE.COLLECT_BAG };
+      case 'plus_armor':
+        return { type: 'powerup', stat: 'armour',    value: 0.25 };
+      case 'plus_speed':
+        return { type: 'powerup', stat: 'moveSpeed', value: 0.25 };
+      case 'plus_magic':
+        return { type: 'powerup', stat: 'magic',     value: 0.25 };
+      case 'plus_shot_pow':
+        return { type: 'powerup', stat: 'shotPower', value: 0.25 };
+      case 'plus_shot_spd':
+        return { type: 'powerup', stat: 'shotSpeed', value: 0.25 };
+      case 'plus_fight':
+        return { type: 'powerup', stat: 'fight',     value: 0.25 };
+      default:
+        return { type: 'score', value: 0 };
     }
   }
 }
 
+// ── Visual effect ─────────────────────────────────────────────────────────────
+
 export class Fx extends Entity {
-  constructor(x, y, kind, delay = 0) {
-    super();
-    this.x = x; this.y = y;
-    this.fx = true; this.temporal = true;
-    this.kind = kind;
-    this.delay = delay;
-    this.start = -1;
-    this.frame = 0;
-    this.frames = kind === "explosion" ? 6 : 6;
-    this.fpf = FPS / 12;
-    this.cbox = CBOX.FULL;
+  /**
+   * @param {number} wx
+   * @param {number} wy
+   * @param {string} fxType   'explosion' | 'teleport'
+   * @param {number} [duration] ms to display
+   */
+  constructor(wx, wy, fxType, duration = 300) {
+    super(wx, wy);
+    this.fxType    = fxType;
+    this.lifetime  = duration;
+    this.animFrame = 0;
+    this.animTimer = 0;
   }
-  update(dt, frame, players, level) {
-    if (this.delay > 0) { this.delay--; return; }
-    if (this.start < 0) this.start = frame;
-    this.frame = Math.floor((frame - this.start) / this.fpf);
-    if (this.frame >= this.frames) this.dead = true;
+
+  update(dt) {
+    this.lifetime -= dt;
+    if (this.lifetime <= 0) { this.dead = true; return; }
+    this.animTimer += dt;
+    if (this.animTimer > TIME.ANIM_FRAME_MS) {
+      this.animTimer -= TIME.ANIM_FRAME_MS;
+      this.animFrame++;
+    }
   }
 }
 
-// helpers
-function nearestPlayer(self, players) {
-  let best = null, bd = Infinity;
-  for (const p of players) {
-    if (!p || !p.joined) continue;
-    const dx = p.x - self.x, dy = p.y - self.y;
-    const d = dx*dx + dy*dy;
-    if (d < bd) { bd = d; best = p; }
-  }
-  return best;
-}
+// ── EntityManager ─────────────────────────────────────────────────────────────
+// Central registry for all active entities in the current level.
 
-function directionTo(self, target, away) {
-  const speed = self.type?.speed || 1;
-  const up    = target.y < self.y - speed;
-  const down  = target.y > self.y + speed;
-  const left  = target.x < self.x - speed;
-  const right = target.x > self.x + speed;
-  if (up && left)    return away ? DIR.DOWNRIGHT : DIR.UPLEFT;
-  if (up && right)   return away ? DIR.DOWNLEFT  : DIR.UPRIGHT;
-  if (down && left)  return away ? DIR.UPRIGHT   : DIR.DOWNLEFT;
-  if (down && right) return away ? DIR.UPLEFT    : DIR.DOWNRIGHT;
-  if (up)    return away ? DIR.DOWN  : DIR.UP;
-  if (down)  return away ? DIR.UP    : DIR.DOWN;
-  if (left)  return away ? DIR.RIGHT : DIR.LEFT;
-  if (right) return away ? DIR.LEFT  : DIR.RIGHT;
-  return self.dir;
+export class EntityManager {
+  constructor() {
+    /** @type {Entity[]} */
+    this.entities = [];
+    /** @type {Entity[]} Entities added this frame (merged at frame end) */
+    this._pending = [];
+  }
+
+  /** Add an entity (deferred until end of frame to avoid mutation during iteration) */
+  add(entity) {
+    this._pending.push(entity);
+    return entity;
+  }
+
+  /** Get all live entities of a given class */
+  getAll(cls) {
+    return this.entities.filter(e => e instanceof cls && !e.dead);
+  }
+
+  /**
+   * Populate from a parsed Level.
+   * Creates Generator and Item entities from the level grid.
+   * Players are NOT added here — they are added by game.js.
+   *
+   * @param {Level}     level
+   * @param {number}    theme   Dungeon theme 0/1/2  [PLACEHOLDER — from ROM header]
+   */
+  initFromLevel(level, theme = 0) {
+    this.entities = [];
+    this._pending = [];
+
+    // Map item pixel sub-type bytes to item kind strings
+    const ITEM_KIND_MAP = {
+      0x00: 'food_turkey',    // Generic food → turkey as default
+      0x10: 'food_turkey',    // Poison (treat as food for now)  [PLACEHOLDER]
+      0x20: 'food_turkey',    // CONFIRMED $2B
+      0x30: 'food_ham',
+      0x40: 'food_jug',       // HYPOTHESIS $2E
+      0x50: 'key',            // CONFIRMED $35
+      0x60: 'potion_magic',   // CONFIRMED $2C
+      0x70: 'treasure_bag',
+      0x80: 'treasure_chest', // CONFIRMED $28
+    };
+
+    const POWERUP_KIND_MAP = {
+      0x00: 'plus_armor',    // HYPOTHESIS $2F
+      0x10: 'plus_speed',    // HYPOTHESIS $30
+      0x20: 'plus_magic',    // HYPOTHESIS $31
+      0x30: 'plus_shot_pow', // HYPOTHESIS $32
+      0x40: 'plus_shot_spd', // HYPOTHESIS $33
+      0x50: 'plus_fight',    // HYPOTHESIS $34
+    };
+
+    // Generator → monster type mapping for PLACEHOLDER codes
+    // CONFIRMED: $19/$1A/$1B (ghost generators) → MON.GHOST
+    // All others: PLACEHOLDER (type unconfirmed from ROM)
+    const GEN_MON_TYPE = {
+      0: MON.GHOST,    // Confirmed
+      1: MON.DEMON,    // PLACEHOLDER
+      2: MON.GRUNT,    // PLACEHOLDER
+      3: MON.SORCERER, // PLACEHOLDER
+      4: MON.LOBBER,   // PLACEHOLDER
+      5: MON.DEATH,    // PLACEHOLDER
+      6: MON.THIEF,    // PLACEHOLDER
+    };
+
+    const T = TILE_T;
+
+    for (const tile of level.grid) {
+      const wx = tile.col * 16;
+      const wy = tile.row * 16;
+
+      switch (tile.type) {
+        case T.GENERATOR: {
+          const monType = GEN_MON_TYPE[tile.monType] ?? MON.GRUNT;
+          // Infer generator level from pixel sub-byte  [PLACEHOLDER]
+          const genLevel = (tile.monType & 0x03) + 1; // 1/2/3
+          this.add(new Generator(wx, wy, monType, Math.min(genLevel, 3), theme));
+          break;
+        }
+        case T.ITEM: {
+          const kind = ITEM_KIND_MAP[tile.itemType & 0xF0] ?? 'food_turkey';
+          this.add(new Item(wx, wy, kind));
+          break;
+        }
+        case T.POWER_UP: {
+          const kind = POWERUP_KIND_MAP[tile.pwrType & 0xF0] ?? 'plus_armor';
+          this.add(new Item(wx, wy, kind));
+          break;
+        }
+        case T.INVIS: {
+          this.add(new Item(wx, wy, 'invisibility'));
+          break;
+        }
+      }
+    }
+
+    // Commit all pending entities
+    this._commit();
+    console.log(`[EntityManager] Spawned: ${this.entities.length} entities from level`);
+  }
+
+  /**
+   * Update all entities.
+   * @param {number}      dt
+   * @param {Level}       level
+   * @param {Player[]}    players
+   */
+  update(dt, level, players) {
+    // Update monsters
+    for (const e of this.entities) {
+      if (e.dead) continue;
+      if (e instanceof Monster)    e.update(dt, level, players, this);
+      else if (e instanceof Generator)  e.update(dt, this);
+      else if (e instanceof Projectile) e.update(dt, level);
+      else if (e instanceof Fx)         e.update(dt);
+    }
+
+    // Remove dead entities
+    this.entities = this.entities.filter(e => !e.dead);
+
+    // Add newly spawned entities
+    this._commit();
+  }
+
+  /** @private */
+  _commit() {
+    for (const e of this._pending) this.entities.push(e);
+    this._pending = [];
+  }
+
+  /** Detonate a magic potion — kills all non-Death monsters in radius */
+  detonateMagic(cx, cy, radiusTiles, players) {
+    const radiusPx = radiusTiles * 16;
+    let score = 0;
+    for (const e of this.entities) {
+      if (e instanceof Monster && !e.dead) {
+        const dx = e.cx - cx, dy = e.cy - cy;
+        if (Math.sqrt(dx*dx + dy*dy) <= radiusPx) {
+          if (e.monType !== MON.DEATH) {
+            e.dead = true;
+            score += SCORE[`KILL_${MON_NAME_UC[e.monType]}`] ?? SCORE.KILL_GRUNT;
+            this.add(new Fx(e.wx, e.wy, 'explosion'));
+          }
+        }
+      }
+    }
+    return score;
+  }
 }

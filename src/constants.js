@@ -1,337 +1,546 @@
 /**
- * src/constants.js  —  Gauntlet (1985) Arcade-Faithful Constants
+ * src/constants.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ALL game constants for Gauntlet (1985) arcade recreation.
  *
- * All values verified against original ROM via:
- *   - ROM reverse-engineering (CPU binary analysis, $00C534 lookup table)
- *   - Attract-screen gameplay data (damage tables, enemy behaviour)
- *   - User visual inspection of Level 1, Rev 14 ROM
+ * Every value in this file is marked with its confidence level:
+ *   CONFIRMED  – verified by direct ROM byte analysis or attract-screen data
+ *   HYPOTHESIS – strong logical inference, not yet byte-verified from ROM
+ *   PLACEHOLDER – unknown; using nearest reasonable value; MUST revisit
  *
- * CONFIDENCE legend throughout this file:
- *   CONFIRMED  = directly verified from ROM or attract-screen data
- *   HYPOTHESIS = strong inference, not yet byte-verified
- *   PLACEHOLDER= unknown, using closest reasonable value
- *
- * NOTE on file layout: the top half is the upstream "ROM spec" exports
- * (TILE-codes / MON / DAMAGE / HEROES / sprite manifests / new PIXEL codes).
- * The bottom half re-exports the engine-side runtime constants the existing
- * src/{level,player,entities,render,game}.js files have always relied on —
- * direction tables, slide order, collision boxes, behaviour stats, etc. —
- * because the upstream spec didn't include them.
+ * Sources:
+ *   ROM  = Atari Gauntlet Rev 14, MAME gauntlet.zip, CPU binary analysis
+ *   ATT  = Attract-screen damage tables observed in MAME gameplay
+ *   SPR  = mbeisser1/gauntlet_mame_gfx v1.1.0 sprite zip, pixel-measured
+ *   VIS  = User visual inspection of Level 1 in ROM analysis tool
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── Tile codes (ROM $00C534 lookup table, 64 entries) ─────────────────────────
-// Raw tile codes in the 32x32 level grid decoded from ROM. Level PNG pixels map
-// to these codes — see tools/rom-decoder.mjs for mapping.
+// ═══════════════════════════════════════════════════════════════════════════════
+// HARDWARE FACTS  [source: ROM analysis, MAME driver gauntlet.cpp]
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const HW = Object.freeze({
+  // Playfield tile size in ROM pixels  [CONFIRMED ROM]
+  TILE_PX:          8,
+  // Logical metatile = 2×2 hardware tiles = 16×16px  [CONFIRMED ROM]
+  META_PX:          16,
+  // Hardware playfield grid size  [CONFIRMED ROM]
+  HW_COLS:          64,
+  HW_ROWS:          64,
+  // Logical grid size (what the level decoder produces)  [CONFIRMED ROM]
+  GRID_COLS:        32,
+  GRID_ROWS:        32,
+  // Arcade monitor viewport in pixels  [CONFIRMED ROM/hardware docs]
+  VIEWPORT_W:       336,
+  VIEWPORT_H:       240,
+  // CPU clock  [CONFIRMED MAME driver]
+  CPU_HZ:           7_159_090,
+  // Sprite (motion object) frame size in pixels  [CONFIRMED SPR - measured]
+  SPRITE_PX:        24,
+  // Item sprite frame size  [CONFIRMED SPR - measured]
+  ITEM_PX:          16,
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RENDER SETTINGS  (our canvas renderer, not ROM hardware)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const RENDER = Object.freeze({
+  // Pixels per logical tile on our canvas
+  CELL:             16,
+  // Canvas scale factor (applied via CSS transform for sharp pixels)
+  SCALE:            3,
+  // Tiles visible in viewport (ceil to avoid black edges)
+  VIEW_COLS:        22,
+  VIEW_ROWS:        16,
+  // HUD height in canvas pixels
+  HUD_H:            32,
+  // Frames per second target
+  FPS:              60,
+  // MS per frame
+  MS_PER_FRAME:     1000 / 60,
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TILE CODES  (from ROM $00C534 lookup table, 64 × 2-byte entries)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The C534 table maps each of the 64 possible tile codes (0x00–0x3F) to a
+// 2-byte "entity class" value.  Key values:
+//   $0000 = floor / transparent
+//   $8000 = permanent stone wall
+//   $8001 = exit / door
+//   anything else = ROM address of entity descriptor
+//
+// Level decoder: tileCode = headerParam & 0x3F
+
 export const TILE = Object.freeze({
-  FLOOR:              0x00, // C534 value $0000  CONFIRMED
-  WALL:               0x01, // C534 value $8000  CONFIRMED (stone wall, permanent)
-  GATE_UNUSED:        0x02, // C534 value $1E09  CONFIRMED (0 placements in 125 levels)
-  GATE_H:             0x03, // C534 value $9D3C  CONFIRMED horizontal gate row21 col15 Level 1
-  GATE_V:             0x04, // C534 value $9D7C  CONFIRMED vertical gate   row31 col9  Level 1
-  // $9D7C - $9D3C = $40: the $40 bit is the orientation flag in the entity descriptor
-  SPAWN:              0x05, // C534 value $1E0D  CONFIRMED player spawn point
-  EXIT:               0x06, // C534 value $8001  CONFIRMED exit row31 col1 Level 1
-  EXIT_WARP_4:        0x07, // C534 value $8001  CONFIRMED exit to level 4 row31 col31
-  EXIT_WARP_8:        0x08, // C534 value $8001  CONFIRMED exit to level 8 row1  col31
-  GHOST_SPRITE:       0x09, // C534 value $0800  CONFIRMED ghost enemy (not generator)
-  GHOST_SPRITE_L2:    0x0A, // C534 value $0809  HYPOTHESIS (3 dungeon themes)
-  GHOST_SPRITE_L3:    0x0B, // C534 value $0812  HYPOTHESIS
-  GEN_A1:             0x0C, // C534 value $09E1  PLACEHOLDER type unconfirmed, theme A
-  GEN_A2:             0x0D, //                   PLACEHOLDER theme B
-  GEN_A3:             0x0E, //                   PLACEHOLDER theme C
-  GEN_B1:             0x0F, // C534 value $183F  PLACEHOLDER type unconfirmed
-  GEN_B2:             0x10, //                   PLACEHOLDER
-  GEN_B3:             0x11, //                   PLACEHOLDER
-  GEN_C1:             0x12, // C534 value $1B57  PLACEHOLDER avg 3/level (rare)
-  GEN_C2:             0x13, //                   PLACEHOLDER
-  GEN_C3:             0x14, //                   PLACEHOLDER
-  GEN_D1:             0x15, // C534 value $13A2  PLACEHOLDER
-  GEN_D2:             0x16, //                   PLACEHOLDER
-  GEN_D3:             0x17, //                   PLACEHOLDER
-  DEATH_GEN:          0x18, // C534 value $1A75  PLACEHOLDER (232×/56 levels)
-  GHOST_GEN_L1:       0x19, // C534 value $09AB  CONFIRMED ghost generator L1 row27 col8
-  GHOST_GEN_L2:       0x1A, // C534 value $09B4  CONFIRMED ghost generator L2 row31 col17
-  GHOST_GEN_L3:       0x1B, // C534 value $09BD  HYPOTHESIS ghost generator L3
-  GEN_BLOCK_A1:       0x1C, // 4-theme × 3-frame block, theme A frame 1  PLACEHOLDER
-  GEN_BLOCK_A2:       0x1D,
-  GEN_BLOCK_A3:       0x1E,
-  GEN_BLOCK_B1:       0x1F, // theme B frame 1  PLACEHOLDER
-  GEN_BLOCK_B2:       0x20,
-  GEN_BLOCK_B3:       0x21,
-  GEN_BLOCK_C1:       0x22, // theme C frame 1  PLACEHOLDER
-  GEN_BLOCK_C2:       0x23,
-  GEN_BLOCK_C3:       0x24,
-  GEN_BLOCK_D1:       0x25, // theme D frame 1  PLACEHOLDER
-  GEN_BLOCK_D2:       0x26,
-  GEN_BLOCK_D3:       0x27,
-  TREASURE_CHEST:     0x28, // C534 value $0987  CONFIRMED row2 col10 Level 1
-  TREASURE_BAG:       0x29, // C534 value $09A2  HYPOTHESIS
-  GEN_DENSE:          0x2A, // C534 value $0963  PLACEHOLDER (555×/103 levels, very common)
-  FOOD_TURKEY:        0x2B, // C534 value $096C  CONFIRMED row26 col31 Level 1
-  POTION_MAGIC:       0x2C, // C534 value $88FC  CONFIRMED magic potion row1 col5 Level 1
-  POTION_INVIS:       0x2D, // C534 value $89FC  HYPOTHESIS invisibility (1×/9 levels)
-  FOOD_JUG:           0x2E, // C534 value $?     HYPOTHESIS non-destructible food
-  POWERUP_ARMOR:      0x2F, // C534 value $91FC  HYPOTHESIS +Armor (1 level only)
-  POWERUP_SPEED:      0x30, // C534 value $92FC  HYPOTHESIS +Speed
-  POWERUP_MAGIC:      0x31, // C534 value $93FC  HYPOTHESIS +Magic Power
-  POWERUP_SHOT_POW:   0x32, // C534 value $94FC  HYPOTHESIS +Shot Power
-  POWERUP_SHOT_SPD:   0x33, // C534 value $95FC  HYPOTHESIS +Shot Speed
-  POWERUP_FIGHT:      0x34, // C534 value $96FC  HYPOTHESIS +Fight Power
-  KEY:                0x35, // C534 value $8AFC  CONFIRMED row31 col3 Level 1
-  WALL_ALT_A:         0x36, // C534 value $8000  CONFIRMED ($8000 flag = wall)
-  WALL_ALT_B:         0x37, // C534 value $8000  CONFIRMED
-  WALL_ALT_C:         0x38, // C534 value $8000  CONFIRMED
-  WALL_ALT_D:         0x39, // C534 value $8000  CONFIRMED
-  EXIT_ALT_A:         0x3A, // C534 value $8001  HYPOTHESIS exit alt tileset
-  EXIT_ALT_B:         0x3B, // C534 value $8001  HYPOTHESIS
-  FLOOR_UNUSED_C:     0x3C, // C534 value $0000  CONFIRMED (unused, treated as floor)
-  FLOOR_UNUSED_D:     0x3D, // C534 value $0000  CONFIRMED
-  FLOOR_UNUSED_E:     0x3E, // C534 value $0000  CONFIRMED
-  FLOOR_UNUSED_F:     0x3F, // C534 value $0000  CONFIRMED
+  // ── Terrain ─────────────────────────────────────────────────────────────
+  FLOOR:            0x00, // C534=$0000  CONFIRMED
+  WALL:             0x01, // C534=$8000  CONFIRMED – stone wall, permanent
+  GATE_UNUSED:      0x02, // C534=$1E09  CONFIRMED – 0 placements in 125 levels
+  GATE_H:           0x03, // C534=$9D3C  CONFIRMED – horizontal gate, VIS Level1 row21 col15
+  GATE_V:           0x04, // C534=$9D7C  CONFIRMED – vertical gate,   VIS Level1 row31 col9
+                          //   NOTE: $9D7C - $9D3C = $40.  The $40 bit IS the orientation
+                          //   flag inside the entity descriptor.  This is a ROM-confirmed fact.
+
+  // ── Player / level structure ─────────────────────────────────────────────
+  SPAWN:            0x05, // C534=$1E0D  CONFIRMED – player spawn point
+  EXIT:             0x06, // C534=$8001  CONFIRMED – standard exit, VIS Level1 row31 col1
+  EXIT_WARP_4:      0x07, // C534=$8001  CONFIRMED – warp to level 4, VIS Level1 row31 col31
+  EXIT_WARP_8:      0x08, // C534=$8001  CONFIRMED – warp to level 8, VIS Level1 row1  col31
+
+  // ── Ghost sprites (enemy sprite, NOT a generator)  ───────────────────────
+  //    C534 value $0800 = entity address in ROM.
+  //    The 3 codes = 3 dungeon themes (same ghost, different colour palette).
+  //    These are wandering enemies placed directly on the map, not spawned.
+  //    Treated as ghost generators for gameplay (see entities.js).
+  GHOST_L1:         0x09, // C534=$0800  CONFIRMED – ghost enemy tile
+  GHOST_L2:         0x0A, // C534=$0809  HYPOTHESIS – theme 2
+  GHOST_L3:         0x0B, // C534=$0812  HYPOTHESIS – theme 3
+
+  // ── Generator group A  ($09E1, 3 dungeon themes)  ────────────────────────
+  //    Monster type: PLACEHOLDER (not yet confirmed from ROM descriptor)
+  GEN_A1:           0x0C, // PLACEHOLDER – using grunt as best guess
+  GEN_A2:           0x0D,
+  GEN_A3:           0x0E,
+
+  // ── Generator group B  ($183F, 3 dungeon themes)  ────────────────────────
+  GEN_B1:           0x0F, // PLACEHOLDER – using demon as best guess
+  GEN_B2:           0x10,
+  GEN_B3:           0x11,
+
+  // ── Generator group C  ($1B57, avg 3/level = rare)  ─────────────────────
+  GEN_C1:           0x12, // PLACEHOLDER – using sorcerer as best guess
+  GEN_C2:           0x13,
+  GEN_C3:           0x14,
+
+  // ── Generator group D  ($13A2, 3 dungeon themes)  ────────────────────────
+  GEN_D1:           0x15, // PLACEHOLDER
+  GEN_D2:           0x16,
+  GEN_D3:           0x17,
+
+  // ── Unknown entity  ($1A75, 232× in 56 levels)  ──────────────────────────
+  UNKNOWN_18:       0x18, // PLACEHOLDER – using death generator as best guess
+
+  // ── Ghost generators  (CONFIRMED from ROM analysis)  ─────────────────────
+  //    Skull-cage sprite.  L1/L2/L3 = 1/2/3 shots to destroy.
+  GHOST_GEN_L1:     0x19, // C534=$09AB  CONFIRMED – VIS Level1 row27 col8
+  GHOST_GEN_L2:     0x1A, // C534=$09B4  CONFIRMED – VIS Level1 row31 col17
+  GHOST_GEN_L3:     0x1B, // C534=$09BD  HYPOTHESIS
+
+  // ── Generator 4-theme × 3-frame block  ($1C–$27)  ────────────────────────
+  //    12 codes = 4 dungeon themes × 3 animation states.
+  //    All are the SAME entity type; the code selects which cage art to show.
+  //    Monster types are PLACEHOLDER until ROM descriptor format decoded.
+  GEN_BLK_A1:      0x1C, GEN_BLK_A2: 0x1D, GEN_BLK_A3: 0x1E, // theme A
+  GEN_BLK_B1:      0x1F, GEN_BLK_B2: 0x20, GEN_BLK_B3: 0x21, // theme B
+  GEN_BLK_C1:      0x22, GEN_BLK_C2: 0x23, GEN_BLK_C3: 0x24, // theme C
+  GEN_BLK_D1:      0x25, GEN_BLK_D2: 0x26, GEN_BLK_D3: 0x27, // theme D
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+  TREASURE_CHEST:   0x28, // C534=$0987  CONFIRMED – VIS Level1 row2  col10
+  TREASURE_BAG:     0x29, // C534=$09A2  HYPOTHESIS
+  GEN_DENSE:        0x2A, // C534=$0963  PLACEHOLDER – 555×/103 levels (most common gen code)
+  FOOD_TURKEY:      0x2B, // C534=$096C  CONFIRMED – VIS Level1 row26 col31
+  POTION_MAGIC:     0x2C, // C534=$88FC  CONFIRMED – VIS Level1 row1  col5
+  POTION_INVIS:     0x2D, // C534=$89FC  HYPOTHESIS – 1× per 9 levels
+  FOOD_JUG:         0x2E, // C534=unknown HYPOTHESIS – non-destructible food
+  POWERUP_ARMOR:    0x2F, // C534=$91FC  HYPOTHESIS – appears in 1 level only
+  POWERUP_SPEED:    0x30, // C534=$92FC  HYPOTHESIS
+  POWERUP_MAGIC:    0x31, // C534=$93FC  HYPOTHESIS
+  POWERUP_SHOT_POW: 0x32, // C534=$94FC  HYPOTHESIS
+  POWERUP_SHOT_SPD: 0x33, // C534=$95FC  HYPOTHESIS
+  POWERUP_FIGHT:    0x34, // C534=$96FC  HYPOTHESIS
+  KEY:              0x35, // C534=$8AFC  CONFIRMED – VIS Level1 row31 col3
+
+  // ── Wall alt tilesets  ───────────────────────────────────────────────────
+  //    Different visual style, same gameplay behaviour as WALL.
+  //    C534 value $8000 = wall flag.  CONFIRMED.
+  WALL_ALT_A:       0x36,
+  WALL_ALT_B:       0x37,
+  WALL_ALT_C:       0x38,
+  WALL_ALT_D:       0x39,
+
+  // ── Exit alt tilesets  ───────────────────────────────────────────────────
+  EXIT_ALT_A:       0x3A, // HYPOTHESIS
+  EXIT_ALT_B:       0x3B, // HYPOTHESIS
+
+  // ── Unused floor codes  ──────────────────────────────────────────────────
+  //    C534 value $0000.  CONFIRMED (same as FLOOR).
+  FLOOR_C:          0x3C,
+  FLOOR_D:          0x3D,
+  FLOOR_E:          0x3E,
+  FLOOR_F:          0x3F,
 });
 
-export const WALL_TILES = new Set([
-  TILE.WALL, TILE.WALL_ALT_A, TILE.WALL_ALT_B, TILE.WALL_ALT_C, TILE.WALL_ALT_D,
-]);
+// Tile sets by category (used by level parser and renderer)
+export const WALL_CODES  = new Set([0x01, 0x36, 0x37, 0x38, 0x39]);  // CONFIRMED
+export const EXIT_CODES  = new Set([0x06, 0x07, 0x08, 0x3A, 0x3B]);  // CONFIRMED
+export const GATE_CODES  = new Set([0x03, 0x04]);                      // CONFIRMED
+export const FLOOR_CODES = new Set([0x00, 0x3C, 0x3D, 0x3E, 0x3F]);  // CONFIRMED
 
-export const DOOR_TILES = new Set([
-  TILE.EXIT, TILE.EXIT_WARP_4, TILE.EXIT_WARP_8, TILE.EXIT_ALT_A, TILE.EXIT_ALT_B,
-]);
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONSTER TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const GATE_TILES = new Set([TILE.GATE_H, TILE.GATE_V]);
-
-// ── Monster types ──────────────────────────────────────────────────────────────
-// Used by entities.js and PNG pixel sub-type byte (0xF000nn)
 export const MON = Object.freeze({
-  GHOST:    0, // C534 $0800 — no fight, no shoot, phased through walls  CONFIRMED
-  DEMON:    1, // — shoots + fights                                       CONFIRMED (attract)
-  GRUNT:    2, // — fights only                                           CONFIRMED (attract)
-  SORCERER: 3, // — fights only (similar to grunt, different sprite)      CONFIRMED (attract)
-  LOBBER:   4, // — shoots lobbed projectile only                         CONFIRMED (attract)
-  DEATH:    5, // — no fight/shoot, drains huge HP, only magic kills      CONFIRMED (attract)
-  THIEF:    6, // — fights, steals items from player                      CONFIRMED (attract)
+  GHOST:    0, // CONFIRMED – phased through walls, cannot fight, no shoot
+  DEMON:    1, // CONFIRMED – fights + shoots projectiles
+  GRUNT:    2, // CONFIRMED – fights only (walks through other grunts)
+  SORCERER: 3, // CONFIRMED – fights only (can pass through walls? HYPOTHESIS)
+  LOBBER:   4, // CONFIRMED – lobs arcing projectile only, doesn't fight
+  DEATH:    5, // CONFIRMED – neither fights nor shoots, pure HP drain on contact
+  THIEF:    6, // CONFIRMED – fights, steals items from players
 });
 
-// ── Damage values (from attract-screen damage tables) ────────────────────────
-// All CONFIRMED via attract sequence in MAME gameplay.
-// Format: [level1_damage, level2_damage, level3_damage] per hit
-export const DAMAGE = Object.freeze({
-  // Monster melee damage per hit
-  GHOST_HIT:    [10, 20, 30], // CONFIRMED — ghosts cannot be fought, only shot
-  GRUNT_HIT:    [ 5,  8, 10], // CONFIRMED
-  DEMON_HIT:    [ 5,  8, 10], // CONFIRMED (also shoots)
-  DEMON_SHOT:   [10, 10, 10], // CONFIRMED demon projectile damage (same all levels)
-  LOBBER_SHOT:  [ 3,  3,  3], // CONFIRMED lobber shot (same all levels)
-  SORCERER_HIT: [ 5,  8, 10], // CONFIRMED
-  DEATH_HIT:    [200, 200, 200], // CONFIRMED "up to 200" per hit — only magic kills Death
-  THIEF_HIT:    [10, 10, 10],   // CONFIRMED thief fight damage
+// Monster name strings (for HUD messages)
+export const MON_NAME = ['Ghost', 'Demon', 'Grunt', 'Sorcerer', 'Lobber', 'Death', 'Thief'];
 
-  // Player shot damage to monsters
-  // Each monster level (L1/L2/L3) requires 1/2/3 shots to kill — CONFIRMED attract
-  SHOT_TO_KILL_L1: 1, // CONFIRMED
-  SHOT_TO_KILL_L2: 2, // CONFIRMED
-  SHOT_TO_KILL_L3: 3, // CONFIRMED
+// ═══════════════════════════════════════════════════════════════════════════════
+// DAMAGE VALUES  [source: ATT – attract-screen damage tables in MAME gameplay]
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Monster "level" (L1/L2/L3) is set by the generator that spawned them.
+// Ghost levels map to: generator tile $19=L1, $1A=L2, $1B=L3.
+//
+// Damage per HIT (one contact frame):
 
-  // Health economy
-  COIN_HP:         2000, // CONFIRMED "1 coin = 2000 health" from attract screen
+export const DMG = Object.freeze({
+  // Melee damage per hit  [ATT CONFIRMED]
+  GHOST:    [10, 20, 30],   // L1/L2/L3.  Ghost cannot be fought back!
+  GRUNT:    [ 5,  8, 10],   // CONFIRMED
+  DEMON:    [ 5,  8, 10],   // CONFIRMED (melee component only)
+  SORCERER: [ 5,  8, 10],   // CONFIRMED
+  DEATH:    [200, 200, 200], // CONFIRMED "up to 200" – only magic kills Death
+  THIEF:    [10, 10, 10],   // CONFIRMED
+
+  // Projectile damage  [ATT CONFIRMED]
+  DEMON_SHOT:   [10, 10, 10], // CONFIRMED – same all levels
+  LOBBER_SHOT:  [ 3,  3,  3], // CONFIRMED – same all levels
+
+  // Shots required to KILL a monster  [ATT CONFIRMED]
+  // Indexed by monster level (0=L1, 1=L2, 2=L3)
+  SHOTS_TO_KILL: [1, 2, 3],  // CONFIRMED – L1=1shot, L2=2shots, L3=3shots
+
+  // Shots required to DESTROY a generator  [PLACEHOLDER]
+  GEN_HP: [5, 10, 15],       // PLACEHOLDER – exact value not ROM-confirmed
+
+  // Player shot base damage  [HYPOTHESIS]
+  PLAYER_SHOT: 100,           // HYPOTHESIS – one-shots L1, two-shots L2, etc.
+
+  // Coin gives this much HP  [ATT CONFIRMED]
+  COIN_HP: 2000,              // CONFIRMED – "1 coin = 2000 health"
+
+  // Food HP values  [HYPOTHESIS]
+  FOOD_HP: 200,               // HYPOTHESIS
+
+  // Magic potion effect radius in tiles  [PLACEHOLDER]
+  MAGIC_RADIUS: 6,            // PLACEHOLDER
 });
 
-// ── Health drain rate ──────────────────────────────────────────────────────────
-// Passive HP drain while alive. Rate not byte-confirmed from ROM yet.
-// javascript-gauntlet uses 1 HP per 0.5 seconds — kept as HYPOTHESIS.
-export const HEALTH_DRAIN_PER_SEC = 2; // HYPOTHESIS — ~1 HP per 0.5s
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIMING  [HYPOTHESIS unless marked otherwise]
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Player starting health ─────────────────────────────────────────────────────
-export const PLAYER_START_HP = 2000; // HYPOTHESIS — matches js-gauntlet, plausible
+export const TIME = Object.freeze({
+  // Passive HP drain: 1 HP every 0.5 seconds  [HYPOTHESIS – matches js-gauntlet]
+  HEALTH_DRAIN_PER_SEC: 2,    // HP lost per second
 
-// ── Player character definitions ───────────────────────────────────────────────
-// Stats relative to each other, not byte-confirmed from ROM.
+  // Starting HP  [HYPOTHESIS]
+  PLAYER_START_HP: 2000,
+
+  // Invulnerability frames after taking damage  [HYPOTHESIS]
+  INVULN_MS: 500,
+
+  // Generator spawn interval (ms)  [PLACEHOLDER]
+  GEN_SPAWN_INTERVAL_MS: 3000,
+
+  // Max monsters spawned by one generator before it stops  [PLACEHOLDER]
+  GEN_MAX_SPAWN: 99,
+
+  // Monster walk speed in pixels per second  [PLACEHOLDER]
+  GHOST_SPEED_PX:    48,  // Ghosts move through walls
+  GRUNT_SPEED_PX:    40,
+  DEMON_SPEED_PX:    44,
+  SORCERER_SPEED_PX: 36,
+  LOBBER_SPEED_PX:   32,
+  DEATH_SPEED_PX:    28,  // Slow but dangerous
+  THIEF_SPEED_PX:    96,  // Very fast
+
+  // Player walk speed in pixels per second  [PLACEHOLDER]
+  PLAYER_SPEED_PX:   80,
+
+  // Projectile speed in pixels per second  [PLACEHOLDER]
+  PLAYER_SHOT_SPEED: 200,
+  DEMON_SHOT_SPEED:  120,
+  LOBBER_PEAK_HEIGHT: 40, // Lobber arc peak in pixels  [PLACEHOLDER]
+
+  // Animation frame duration in ms  [PLACEHOLDER]
+  ANIM_FRAME_MS: 100,     // 10fps animation
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLAYER / HERO DEFINITIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Sprite sheet sizes CONFIRMED by pixel measurement of mbeisser1 v1.1.0 zip.
+// Stat multipliers PLACEHOLDER (relative values, not ROM-confirmed).
+// Direction row layout in sprite sheets: HYPOTHESIS based on standard arcade
+// conventions.  Rows 0-7 = S, SW, W, NW, N, NE, E, SE.
+
 export const HEROES = Object.freeze([
   {
-    id:      'warrior',
-    name:    'Thor the Warrior',
-    color:   '#4488ff',
-    // Sprite sheet: assets/sprites/player-warrior-sprite-sheet.png
-    // Frame grid: 9 cols × 8 rows = 72 frames at 24×24px  CONFIRMED from zip
-    spriteSheet: 'assets/sprites/player-warrior-sprite-sheet.png',
-    frameCols: 9, frameRows: 8, frameSize: 24,
-    // Weapon sprite: assets/sprites/player-warrior-weapon-sprite-sheet.png
-    // Frame grid: 16 frames (256×16, 16px each)
-    weaponSheet: 'assets/sprites/player-warrior-weapon-sprite-sheet.png',
-    weaponFrames: 16, weaponFrameSize: 16,
-    shotPower:  1.0, // HYPOTHESIS
-    shotSpeed:  1.0, // HYPOTHESIS
-    moveSpeed:  1.0, // HYPOTHESIS
-    armour:     1.0, // HYPOTHESIS — best armour
-    magic:      1.0, // HYPOTHESIS
+    id:         'warrior',
+    name:       'Thor the Warrior',
+    desc:       'Maximum fighting power, average shot power.',
+    color:      '#4488ff',    // HUD/nameplate colour
+    // Main walk/fight sprite sheet  [SPR CONFIRMED dimensions]
+    sheet:      'sprites/player-warrior-sprite-sheet.png',
+    sheetW:     216, sheetH: 192,  // 9 cols × 8 rows × 24px
+    frameCols:  9,   frameRows: 8, frameSize: 24,
+    // Weapon/shot sprite sheet  [SPR CONFIRMED dimensions]
+    weapSheet:  'sprites/player-warrior-weapon-sprite-sheet.png',
+    weapW:      256, weapH: 16,    // 16 frames × 16px
+    weapCols:   16,  weapSize: 16,
+    // Victory/exit animation  [SPR CONFIRMED dimensions]
+    exitSheet:  'sprites/player-warrior-exit-sprite-sheet.png',
+    exitW:      144, exitH: 24,    // 6 frames × 24px
+    exitCols:   6,
+    // Stat multipliers (1.0 = baseline)  [PLACEHOLDER]
+    shotPower:  1.0,
+    shotSpeed:  1.0,
+    moveSpeed:  1.0,
+    armour:     1.0,   // Warrior has good armour
+    magic:      1.0,
+    fight:      1.5,   // Best fighter
   },
   {
-    id:      'valkyrie',
-    name:    'Thyra the Valkyrie',
-    color:   '#ff8844',
-    spriteSheet: 'assets/sprites/player-valkyrie-sprite-sheet.png',
-    frameCols: 9, frameRows: 8, frameSize: 24,
-    weaponSheet: 'assets/sprites/player-valkyrie-weapon-sprite-sheet.png',
-    weaponFrames: 8, weaponFrameSize: 16,
-    shotPower:  0.75, // HYPOTHESIS
-    shotSpeed:  0.75, // HYPOTHESIS
-    moveSpeed:  0.9,  // HYPOTHESIS
-    armour:     1.25, // HYPOTHESIS — best armour
-    magic:      0.75, // HYPOTHESIS
+    id:         'valkyrie',
+    name:       'Thyra the Valkyrie',
+    desc:       'Maximum armour, excellent fighting power.',
+    color:      '#ff8844',
+    sheet:      'sprites/player-valkyrie-sprite-sheet.png',
+    sheetW:     216, sheetH: 192,  // 9×8×24  [SPR CONFIRMED]
+    frameCols:  9,   frameRows: 8, frameSize: 24,
+    weapSheet:  'sprites/player-valkyrie-weapon-sprite-sheet.png',
+    weapW:      128, weapH: 16,    // 8×16   [SPR CONFIRMED]
+    weapCols:   8,   weapSize: 16,
+    exitSheet:  'sprites/player-valkyrie-exit-sprite-sheet.png',
+    exitW:      168, exitH: 24,    // 7×24   [SPR CONFIRMED]
+    exitCols:   7,
+    shotPower:  0.75, // PLACEHOLDER
+    shotSpeed:  0.75, // PLACEHOLDER
+    moveSpeed:  0.9,  // PLACEHOLDER
+    armour:     1.5,  // Best armour  PLACEHOLDER
+    magic:      0.75, // PLACEHOLDER
+    fight:      1.25, // PLACEHOLDER
   },
   {
-    id:      'elf',
-    name:    'Questor the Elf',
-    color:   '#44ff44',
-    spriteSheet: 'assets/sprites/player-elf-sprite-sheet.png',
-    frameCols: 8, frameRows: 8, frameSize: 24,
-    weaponSheet: 'assets/sprites/player-elf-weapon-sprite-sheet.png',
-    weaponFrames: 8, weaponFrameSize: 16,
-    shotPower:  0.75, // HYPOTHESIS
-    shotSpeed:  1.5,  // HYPOTHESIS — fastest shots
-    moveSpeed:  1.25, // HYPOTHESIS — fastest movement
-    armour:     0.75, // HYPOTHESIS — weakest armour
-    magic:      0.75, // HYPOTHESIS
+    id:         'elf',
+    name:       'Questor the Elf',
+    desc:       'Maximum shot and magic power, fastest movement.',
+    color:      '#44ff44',
+    sheet:      'sprites/player-elf-sprite-sheet.png',
+    sheetW:     192, sheetH: 192,  // 8×8×24  [SPR CONFIRMED]
+    frameCols:  8,   frameRows: 8, frameSize: 24,
+    weapSheet:  'sprites/player-elf-weapon-sprite-sheet.png',
+    weapW:      128, weapH: 16,    // 8×16  [SPR CONFIRMED]
+    weapCols:   8,   weapSize: 16,
+    exitSheet:  'sprites/player-elf-exit-sprite-sheet.png',
+    exitW:      168, exitH: 24,    // 7×24  [SPR CONFIRMED]
+    exitCols:   7,
+    shotPower:  1.0,  // PLACEHOLDER
+    shotSpeed:  1.5,  // Best shot speed  PLACEHOLDER
+    moveSpeed:  1.25, // Fastest  PLACEHOLDER
+    armour:     0.75, // Weakest armour  PLACEHOLDER
+    magic:      1.5,  // Best magic  PLACEHOLDER
+    fight:      0.75, // PLACEHOLDER
   },
   {
-    id:      'wizard',
-    name:    'Merlin the Wizard',
-    color:   '#ff44ff',
-    spriteSheet: 'assets/sprites/player-wizard-sprite-sheet.png',
-    frameCols: 6, frameRows: 8, frameSize: 24,
-    weaponSheet: 'assets/sprites/player-wizard-weapon-sprite-sheet.png',
-    weaponFrames: 8, weaponFrameSize: 16,
-    shotPower:  0.5,  // HYPOTHESIS
-    shotSpeed:  1.0,  // HYPOTHESIS
-    moveSpeed:  0.75, // HYPOTHESIS — slowest
-    armour:     0.5,  // HYPOTHESIS — weakest armour
-    magic:      2.0,  // HYPOTHESIS — best magic
+    id:         'wizard',
+    name:       'Merlin the Wizard',
+    desc:       'Maximum magic power, weakest in combat.',
+    color:      '#ff44ff',
+    sheet:      'sprites/player-wizard-sprite-sheet.png',
+    sheetW:     144, sheetH: 192,  // 6×8×24  [SPR CONFIRMED]
+    frameCols:  6,   frameRows: 8, frameSize: 24,
+    weapSheet:  'sprites/player-wizard-weapon-sprite-sheet.png',
+    weapW:      128, weapH: 32,    // 8×16 in 2 rows  [SPR CONFIRMED]
+    weapCols:   8,   weapSize: 16,
+    exitSheet:  'sprites/player-wizard-exit-sprite-sheet.png',
+    exitW:      144, exitH: 24,    // 6×24  [SPR CONFIRMED]
+    exitCols:   6,
+    shotPower:  0.5,  // PLACEHOLDER
+    shotSpeed:  1.0,  // PLACEHOLDER
+    moveSpeed:  0.75, // Slowest  PLACEHOLDER
+    armour:     0.5,  // Weakest  PLACEHOLDER
+    magic:      2.0,  // Best magic  PLACEHOLDER
+    fight:      0.5,  // PLACEHOLDER
   },
 ]);
 
-// ── Monster sprite sheets ──────────────────────────────────────────────────────
-// All confirmed from mbeisser1/gauntlet_mame_gfx v1.1.0 sprite zip.
-// Frame grid sizes confirmed by pixel measurement.
-export const MONSTER_SPRITES = Object.freeze({
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONSTER SPRITE SHEETS  [SPR CONFIRMED dimensions]
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Each monster has 3 variants (dungeon themes 1/2/3 = different colour palettes).
+// Frame grid: HYPOTHESIS layout (8 directions × N frames per direction).
+//   Row 0 = South, Row 1 = SW, Row 2 = West, Row 3 = NW,
+//   Row 4 = North, Row 5 = NE, Row 6 = East, Row 7 = SE.
+//
+// For 4-directional gameplay: use rows 0 (S), 2 (W), 4 (N), 6 (E).
+
+export const MON_SPRITES = Object.freeze({
   [MON.GHOST]: {
-    sheets: [
-      'assets/sprites/monster-ghost1-sprite-sheet.png', // dungeon theme 1
-      'assets/sprites/monster-ghost2-sprite-sheet.png', // dungeon theme 2
-      'assets/sprites/monster-ghost3-sprite-sheet.png', // dungeon theme 3
-    ],
-    frameCols: 4, frameRows: 8, frameSize: 24, // CONFIRMED 96×192 = 4×8
+    sheets:     ['sprites/monster-ghost1-sprite-sheet.png',
+                 'sprites/monster-ghost2-sprite-sheet.png',
+                 'sprites/monster-ghost3-sprite-sheet.png'],
+    sheetW: 96, sheetH: 192,  // CONFIRMED
+    cols: 4, rows: 8, size: 24, // 4 frames × 8 directions
   },
   [MON.GRUNT]: {
-    sheets: [
-      'assets/sprites/monster-grunt1-sprite-sheet.png',
-      'assets/sprites/monster-grunt2-sprite-sheet.png',
-      'assets/sprites/monster-grunt3-sprite-sheet.png',
-    ],
-    altSheets: [
-      'assets/sprites/monster-grunt1-alt-sprite-sheet.png',
-      'assets/sprites/monster-grunt2-alt-sprite-sheet.png',
-      'assets/sprites/monster-grunt3-alt-sprite-sheet.png',
-    ],
-    frameCols: 5, frameRows: 8, frameSize: 24,    // CONFIRMED 120×192 = 5×8
-    altFrameCols: 6,                               // CONFIRMED 144×192 = 6×8
+    sheets:     ['sprites/monster-grunt1-sprite-sheet.png',
+                 'sprites/monster-grunt2-sprite-sheet.png',
+                 'sprites/monster-grunt3-sprite-sheet.png'],
+    altSheets:  ['sprites/monster-grunt1-alt-sprite-sheet.png',
+                 'sprites/monster-grunt2-alt-sprite-sheet.png',
+                 'sprites/monster-grunt3-alt-sprite-sheet.png'],
+    sheetW: 120, sheetH: 192,    // CONFIRMED (main)
+    altW:   144, altH:   192,    // CONFIRMED (alt = 6 cols vs 5)
+    cols: 5, rows: 8, size: 24,
+    altCols: 6,
   },
   [MON.DEMON]: {
-    sheets: [
-      'assets/sprites/monster-demon1-sprite-sheet.png',
-      'assets/sprites/monster-demon2-sprite-sheet.png',
-      'assets/sprites/monster-demon3-sprite-sheet.png',
-    ],
-    frameCols: 8, frameRows: 8, frameSize: 24,    // CONFIRMED 192×192 = 8×8
+    sheets:     ['sprites/monster-demon1-sprite-sheet.png',
+                 'sprites/monster-demon2-sprite-sheet.png',
+                 'sprites/monster-demon3-sprite-sheet.png'],
+    sheetW: 192, sheetH: 192,  // CONFIRMED (8×8)
+    cols: 8, rows: 8, size: 24,
   },
   [MON.SORCERER]: {
-    sheets: [
-      'assets/sprites/monster-sorcerer1-sprite-sheet.png',
-      'assets/sprites/monster-sorcerer2-sprite-sheet.png',
-      'assets/sprites/monster-sorcerer3-sprite-sheet.png',
-    ],
-    frameCols: 6, frameRows: 8, frameSize: 24,    // CONFIRMED 144×192 = 6×8
+    sheets:     ['sprites/monster-sorcerer1-sprite-sheet.png',
+                 'sprites/monster-sorcerer2-sprite-sheet.png',
+                 'sprites/monster-sorcerer3-sprite-sheet.png'],
+    sheetW: 144, sheetH: 192,  // CONFIRMED (6×8)
+    cols: 6, rows: 8, size: 24,
   },
   [MON.LOBBER]: {
-    sheets: [
-      'assets/sprites/monster-lobber1-sprite-sheet.png',
-      'assets/sprites/monster-lobber2-sprite-sheet.png',
-      'assets/sprites/monster-lobber3-sprite-sheet.png',
-    ],
-    frameCols: 5, frameRows: 5, frameSize: 24,    // CONFIRMED 120×128 (≈5×5 + partial)
+    sheets:     ['sprites/monster-lobber1-sprite-sheet.png',
+                 'sprites/monster-lobber2-sprite-sheet.png',
+                 'sprites/monster-lobber3-sprite-sheet.png'],
+    sheetW: 120, sheetH: 128,  // CONFIRMED (5×5+partial rows)
+    cols: 5, rows: 5, size: 24,
+    // Lobber explosion  [SPR CONFIRMED]
+    explSheet:  'sprites/monster-lobber-exlosion-sprite-sheet.png',
+    explW: 48, explH: 16, explCols: 3, explSize: 16,
   },
   [MON.DEATH]: {
-    sheets: ['assets/sprites/monster-death.png'],
-    frameCols: 3, frameRows: 8, frameSize: 24,    // CONFIRMED 72×192 = 3×8
+    sheets:     ['sprites/monster-death.png'],  // Only 1 theme (Death is unique)
+    sheetW: 72, sheetH: 192,   // CONFIRMED (3×8)
+    cols: 3, rows: 8, size: 24,
   },
   [MON.THIEF]: {
-    sheets: ['assets/sprites/monster-thief-sprite-sheet.png'],
-    frameCols: 9, frameRows: 8, frameSize: 24,    // CONFIRMED 216×192 = 9×8
+    sheets:     ['sprites/monster-thief-sprite-sheet.png'], // Only 1 theme
+    sheetW: 216, sheetH: 192,  // CONFIRMED (9×8)
+    cols: 9, rows: 8, size: 24,
   },
 });
 
-// ── Generator sprite sheets ────────────────────────────────────────────────────
-export const GENERATOR_SPRITES = Object.freeze({
-  [MON.GHOST]: {
-    sheet: 'assets/sprites/monster-ghost-generator.png',
-    frameCols: 3, frameRows: 1, frameSize: 24,   // CONFIRMED 72×24 = 3 frames
-    // Frame 0 = L1 (easiest/1-shot kill), frame 1 = L2, frame 2 = L3
+// ═══════════════════════════════════════════════════════════════════════════════
+// GENERATOR SPRITE SHEETS  [SPR CONFIRMED dimensions]
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Each generator has 3 frames (cols 0/1/2) selecting L1/L2/L3 difficulty.
+// Ghost generators use a skull-cage sprite; all others use a stone-cage sprite.
+
+export const GEN_SPRITES = Object.freeze({
+  ghost: {
+    sheet:   'sprites/monster-ghost-generator.png',
+    sheetW:  72, sheetH: 24,   // CONFIRMED 72×24 = 3 frames × 24px
+    cols: 3, rows: 1, size: 24,
   },
-  // All non-ghost monster generators use the stone cage sprite:
+  // All non-ghost monster types use this stone cage:
   default: {
-    sheet: 'assets/sprites/monster-monster-generator.png',
-    frameCols: 3, frameRows: 1, frameSize: 24,   // CONFIRMED 72×24 = 3 frames
+    sheet:   'sprites/monster-monster-generator.png',
+    sheetW:  72, sheetH: 24,   // CONFIRMED 72×24 = 3 frames × 24px
+    cols: 3, rows: 1, size: 24,
   },
 });
 
-// ── Item sprites ───────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// ITEM SPRITES  [SPR CONFIRMED unless marked otherwise]
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const ITEM_SPRITES = Object.freeze({
-  exit:              'assets/sprites/dungeon-exit.png',            // 16×16  CONFIRMED
-  exit_to_4:         'assets/sprites/dungeon-exit-to-4.png',       // 16×16  CONFIRMED
-  exit_to_8:         'assets/sprites/dungeon-exit-to-8.png',       // 16×16  CONFIRMED
-  key:               'assets/sprites/dungeon-key.png',             // 16×16  CONFIRMED
-  keyring:           'assets/sprites/dungeon-keyring.png',         // 24×16  CONFIRMED
-  food_turkey:       'assets/sprites/dungeon-food-turkey.png',     // 24×24  CONFIRMED
-  food_drumstick:    'assets/sprites/dungeon-food-drumstick.png',   // 24×24
-  food_ham:          'assets/sprites/dungeon-food-ham.png',         // 24×24
-  food_jug:          'assets/sprites/dungeon-food-jug.png',         // 24×24
-  potion_blue:       'assets/sprites/dungeon-potion-blue.png',      // 16×16  CONFIRMED
-  potion_orange:     'assets/sprites/dungeon-potion-orange.png',    // 16×16
-  invisibility:      'assets/sprites/dungeon-limited-invisibility.png', // 24×24
-  plus_armor:        'assets/sprites/dungeon-potion-extra-armor.png',   // 16×16
-  plus_speed:        'assets/sprites/dungeon-potion-extra-speed.png',
-  plus_magic:        'assets/sprites/dungeon-potion-extra-magic.png',
-  plus_shot_pow:     'assets/sprites/dungeon-potion-extra-shot-power.png',
-  plus_shot_spd:     'assets/sprites/dungeon-potion-extra-shot-speed.png',
-  plus_fight:        'assets/sprites/dungeon-potion-weapon.png',
-  treasure_chest:    'assets/sprites/dungeon-treasure-chest-sprite-sheet.png', // 3 frames
-  treasure_bag:      'assets/sprites/dungeon-treasure-bag.png',
-  spawn:             'assets/sprites/player-spawn-sprite-sheet.png',           // 7 frames
-  teleport:          'assets/sprites/dungeon-teleport-sprite-sheet.png',       // 6 frames (16×16)
-  explosion:         'assets/sprites/explosion-collision-sprite-sheet.png',    // 3 frames (16×16)
-  // Gate sprites — extracted from all-monster.png row 2 right section
-  // These are the blue bar graphics (NOT stone wall tiles)
-  gate_horizontal:   'assets/sprites/gate-horizontal.png',  // 29×66 composite
-  gate_vertical:     'assets/sprites/gate-vertical.png',    // 12×161 composite
+  // Exits  [CONFIRMED]
+  exit:             { file: 'sprites/dungeon-exit.png',              w:16, h:16, frames:1 },
+  exit_to_4:        { file: 'sprites/dungeon-exit-to-4.png',         w:16, h:16, frames:1 },
+  exit_to_8:        { file: 'sprites/dungeon-exit-to-8.png',         w:16, h:16, frames:1 },
+  // Gate sprites – extracted from all-monster.png row 2 right section
+  // CONFIRMED: these are bar-grate graphics, NOT stone wall tiles
+  gate_horizontal:  { file: 'sprites/gate-horizontal.png',           w:29, h:66, frames:1 },
+  gate_vertical:    { file: 'sprites/gate-vertical.png',             w:12, h:161, frames:1 },
+  // Keys  [CONFIRMED]
+  key:              { file: 'sprites/dungeon-key.png',               w:16, h:16, frames:1 },
+  keyring:          { file: 'sprites/dungeon-keyring.png',           w:24, h:16, frames:1 },
+  // Food  [CONFIRMED food_turkey via VIS]
+  food_turkey:      { file: 'sprites/dungeon-food-turkey.png',       w:24, h:24, frames:1 },
+  food_drumstick:   { file: 'sprites/dungeon-food-drumstick.png',    w:24, h:24, frames:1 },
+  food_ham:         { file: 'sprites/dungeon-food-ham.png',          w:24, h:24, frames:1 },
+  food_jug:         { file: 'sprites/dungeon-food-jug.png',          w:24, h:24, frames:1 },
+  // Potions  [CONFIRMED potion_blue via VIS]
+  potion_blue:      { file: 'sprites/dungeon-potion-blue.png',       w:16, h:16, frames:1 },
+  potion_orange:    { file: 'sprites/dungeon-potion-orange.png',     w:16, h:16, frames:1 },
+  invisibility:     { file: 'sprites/dungeon-limited-invisibility.png', w:24, h:24, frames:1 },
+  // Power-ups  [HYPOTHESIS]
+  plus_armor:       { file: 'sprites/dungeon-potion-extra-armor.png',      w:16, h:16, frames:1 },
+  plus_speed:       { file: 'sprites/dungeon-potion-extra-speed.png',      w:16, h:16, frames:1 },
+  plus_magic:       { file: 'sprites/dungeon-potion-extra-magic.png',      w:16, h:16, frames:1 },
+  plus_shot_pow:    { file: 'sprites/dungeon-potion-extra-shot-power.png', w:16, h:16, frames:1 },
+  plus_shot_spd:    { file: 'sprites/dungeon-potion-extra-shot-speed.png', w:16, h:16, frames:1 },
+  plus_fight:       { file: 'sprites/dungeon-potion-weapon.png',           w:16, h:16, frames:1 },
+  // Treasure  [CONFIRMED treasure_chest via VIS]
+  treasure_chest:   { file: 'sprites/dungeon-treasure-chest-sprite-sheet.png', w:72, h:24, frames:3 },
+  treasure_bag:     { file: 'sprites/dungeon-treasure-bag.png',       w:24, h:24, frames:1 },
+  // Effects
+  spawn:            { file: 'sprites/player-spawn-sprite-sheet.png', w:168, h:24, frames:7 },
+  teleport:         { file: 'sprites/dungeon-teleport-sprite-sheet.png', w:96, h:16, frames:6 },
+  explosion:        { file: 'sprites/explosion-collision-sprite-sheet.png', w:48, h:16, frames:3 },
+  explosion_teleport:{ file:'sprites/explosion-teleport-sprite-sheet.png', w:144, h:24, frames:6 },
+  // HUD icons
+  icon_key:         { file: 'sprites/icon-key.png',      w:8, h:8, frames:1 },
+  icon_potion:      { file: 'sprites/icon-potion.png',   w:8, h:8, frames:1 },
+  icon_upgrades:    { file: 'sprites/icon-upgrades.png', w:48, h:8, frames:6 },
+  // Title screen
+  text_gauntlet:    { file: 'sprites/text-gauntlet.png', w:80, h:24, frames:1 },
+  text_points:      { file: 'sprites/text-points.png',   w:24, h:80, frames:1 },
 });
 
-// ── Tile code → sprite key mapping ────────────────────────────────────────────
-// Maps ROM tile codes to ITEM_SPRITES keys for rendering.
-// Used by render.js to look up which sprite to draw.
+// ═══════════════════════════════════════════════════════════════════════════════
+// TILE CODE → ITEM SPRITE KEY  (for level renderer)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// This table is what the renderer looks up to know which sprite to draw for
+// each tile code.  Walls have no entry (rendered as colour-fill only — wall
+// tile graphics require chars ROM decode which is not yet complete).
+
 export const TILE_SPRITE = Object.freeze({
   [TILE.SPAWN]:           'spawn',
-  [TILE.EXIT]:            'exit',
-  [TILE.EXIT_WARP_4]:     'exit_to_4',
-  [TILE.EXIT_WARP_8]:     'exit_to_8',
+  [TILE.EXIT]:            'exit',            // CONFIRMED
+  [TILE.EXIT_WARP_4]:     'exit_to_4',       // CONFIRMED
+  [TILE.EXIT_WARP_8]:     'exit_to_8',       // CONFIRMED
   [TILE.EXIT_ALT_A]:      'exit',
   [TILE.EXIT_ALT_B]:      'exit',
-  [TILE.GATE_H]:          'gate_horizontal',   // CONFIRMED
-  [TILE.GATE_V]:          'gate_vertical',     // CONFIRMED
-  [TILE.KEY]:             'key',               // CONFIRMED
-  [TILE.FOOD_TURKEY]:     'food_turkey',       // CONFIRMED
+  [TILE.GATE_H]:          'gate_horizontal', // CONFIRMED
+  [TILE.GATE_V]:          'gate_vertical',   // CONFIRMED
+  [TILE.KEY]:             'key',             // CONFIRMED
+  [TILE.FOOD_TURKEY]:     'food_turkey',     // CONFIRMED
   [TILE.FOOD_JUG]:        'food_jug',
-  [TILE.POTION_MAGIC]:    'potion_blue',       // CONFIRMED
+  [TILE.POTION_MAGIC]:    'potion_blue',     // CONFIRMED
   [TILE.POTION_INVIS]:    'invisibility',
-  [TILE.TREASURE_CHEST]:  'treasure_chest',    // CONFIRMED
+  [TILE.TREASURE_CHEST]:  'treasure_chest',  // CONFIRMED
   [TILE.TREASURE_BAG]:    'treasure_bag',
   [TILE.POWERUP_ARMOR]:   'plus_armor',
   [TILE.POWERUP_SPEED]:   'plus_speed',
@@ -341,198 +550,142 @@ export const TILE_SPRITE = Object.freeze({
   [TILE.POWERUP_FIGHT]:   'plus_fight',
 });
 
-// ── Level PNG format (pixel-per-tile encoding) ─────────────────────────────────
-// Matches javascript-gauntlet format for the original 17 levels.
-// Extended for ROM-decoded levels (power-ups, invisibility, gate orientation).
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEVEL PNG PIXEL FORMAT  (one pixel per tile, 32×32 image = one level)
+// ═══════════════════════════════════════════════════════════════════════════════
 //
-// IMPORTANT: the engine matches with a 0xFFFF00 byte mask (see level.js
-// isType()). That means each PIXEL.* constant below holds the TYPE BASE
-// signature (byte 2 = 0). Sub-types live in the low byte. The rom-decoder
-// emits some pixels with non-zero low bytes (e.g. wall = 0x404040 in the
-// ROM dump, gate-vertical = 0xC0C040). Those mask down to the same type
-// signature here (0x404040 & 0xFFFF00 = 0x404000) so both legacy and
-// ROM-decoded levels classify the same way.
-export const PIXEL = Object.freeze({
-  FLOOR:        0x000000,
-  NOTHING:      0x000000,   // legacy alias — out-of-bounds void
-  WALL:         0x404000,   // type signature (ROM pixels may be 0x404040)
-  GATE_H:       0xC0C000,   // horizontal gate  CONFIRMED $03
-  GATE_V_FLAG:  0x000040,   // OR'd onto GATE_H to mark vertical orientation
-  GATE_V:       0xC0C040,   // vertical gate    CONFIRMED $04 (bit 6 = orientation flag)
-  DOOR:         0xC0C000,   // legacy alias for gate (horizontal)
-  SPAWN:        0x00F000,   // player start      CONFIRMED $05
-  START:        0x00F000,   // legacy alias
-  EXIT:         0x004000,   // exit              CONFIRMED $06
-  EXIT_WARP_4:  0x004010,   // exit-to-4-warp   CONFIRMED $07
-  EXIT_WARP_8:  0x004020,   // exit-to-8-warp   CONFIRMED $08
-  // Generators: 0xF000nn where nn = monster type (MON.*)
-  GENERATOR:    0xF00000,
-  GEN_GHOST:    0xF00000, // CONFIRMED
-  GEN_DEMON:    0xF00010,
-  GEN_GRUNT:    0xF00020,
-  GEN_SORCERER: 0xF00030,
-  GEN_LOBBER:   0xF00040,
-  GEN_DEATH:    0xF00050,
-  GEN_THIEF:    0xF00060,
-  // Monsters (live placements, no generator): 0x4000nn
-  MONSTER:      0x400000,
-  // Treasure/items: 0x0080nn where nn = sub-type
-  TREASURE:     0x008000,
-  TREASURE_CHEST:  0x008080, // CONFIRMED $28
-  TREASURE_BAG:    0x008070, // HYPOTHESIS $29
-  FOOD_TURKEY:     0x008020, // CONFIRMED $2B
-  FOOD_JUG:        0x008040, // HYPOTHESIS $2E
-  KEY:             0x008050, // CONFIRMED $35
-  POTION_MAGIC:    0x008060, // CONFIRMED $2C
-  POTION_INVIS:    0x00D000, // HYPOTHESIS $2D (high G channel distinguishes from magic)
-  INVIS:           0x00D000, // type signature for invisibility (same value, masks identically)
-  // Power-ups: 0x00E0nn where nn = power-up type (ROM extension)
-  POWERUP:         0x00E000, // type signature
-  POWERUP_ARMOR:   0x00E000, // $2F
-  POWERUP_SPEED:   0x00E010, // $30
-  POWERUP_MAGIC:   0x00E020, // $31
-  POWERUP_SHOT_POW:0x00E030, // $32
-  POWERUP_SHOT_SPD:0x00E040, // $33
-  POWERUP_FIGHT:   0x00E050, // $34
+// This format is used for BOTH the original javascript-gauntlet levels (17
+// hand-crafted) AND the ROM-decoded levels from tools/rom-decoder.mjs.
+// The ROM decoder outputs PNGs in this exact format.
+//
+// Pixel value   = 0xRRGGBB (24-bit, ignoring alpha)
+// Classification is done by RANGES not exact values (see level.js classifyPixel).
 
-  // Byte masks for level.js type-matching. The high two bytes carry the
-  // entity class; the low byte carries the sub-type (monster id, orientation
-  // flag, power-up variant, etc.).
-  MASK_TYPE:    0xFFFF00,
-  MASK_EXHIGH:  0x0000F0,
-  MASK_EXLOW:   0x00000F,
+export const PIXEL = Object.freeze({
+  FLOOR:           0x000000, // Pure black = floor / nothing
+  WALL:            0x404040, // Dark grey = stone wall
+  GATE_H:          0xC0C000, // Yellow = horizontal gate  [CONFIRMED $03]
+  GATE_V:          0xC0C040, // Yellow + blue tint = vertical gate  [CONFIRMED $04]
+                             //   The $40 in blue channel encodes orientation
+                             //   (mirrors the $40 bit difference in ROM C534 addresses)
+  SPAWN:           0x00F000, // Bright green = player spawn  [CONFIRMED $05]
+  EXIT:            0x004000, // Dark green = exit  [CONFIRMED $06]
+  EXIT_WARP_4:     0x004010, // Dark green + low blue = warp to 4  [CONFIRMED $07]
+  EXIT_WARP_8:     0x004020, // Dark green + medium blue = warp to 8  [CONFIRMED $08]
+  // Generators: high red byte = generator, low bytes = monster type + subtype
+  // 0xF0TTYY where TT = monster type (MON.*), YY = level subtype
+  GEN_BASE:        0xF00000, // Base generator colour (red = generator class)
+  // Items: 0x008000 range = items
+  // 0x0080YY where YY = item sub-type
+  ITEM_BASE:       0x008000,
+  // Power-ups: 0x00E0YY
+  POWERUP_BASE:    0x00E000,
+  // Invisibility: 0x00D0YY (distinguished from items by D0 vs 80)
+  INVIS_BASE:      0x00D000,
+});
+
+// Ranges for pixel classification (anything between BASE and BASE+0xFF)
+export const PIX_RANGE = Object.freeze({
+  // Pixels with R >= 0xE0 and G < 0x10 = generators
+  isGenerator: (r, g, b) => r >= 0xE0 && g < 0x10,
+  // Pixels with G == 0x80 = items
+  isItem:      (r, g, b) => r < 0x10 && g === 0x80,
+  // Pixels with G == 0xE0 = power-ups
+  isPowerup:   (r, g, b) => r < 0x10 && g === 0xE0,
+  // Pixels with G == 0xD0 = invisibility
+  isInvis:     (r, g, b) => r < 0x10 && g === 0xD0,
+  // Wall: grey (equal R/G/B in 0x30–0x60 range)
+  isWall:      (r, g, b) => r >= 0x30 && r <= 0x60 && Math.abs(r-g) < 10 && Math.abs(g-b) < 10,
+  // Spawn: bright green (G >= 0xE0, R < 0x10)
+  isSpawn:     (r, g, b) => r < 0x10 && g >= 0xE0 && b < 0x10,
+  // Exit: dark green (G in 0x30–0x50, R < 0x10)
+  isExit:      (r, g, b) => r < 0x10 && g >= 0x30 && g <= 0x50,
+  // Gate: yellow (R ~= G ~= 0xC0, B < 0x60)
+  isGate:      (r, g, b) => r >= 0xA0 && g >= 0xA0 && b < 0x60 && Math.abs(r-g) < 0x20,
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ENGINE-SIDE CONSTANTS — these were in the previous constants.js and are still
-// imported by level.js / entities.js / player.js / render.js / game.js. The
-// upstream ROM-spec rewrite didn't include them, so they're preserved here.
-// Naming notes:
-//   - the old `TILE = 32` (pixel size) is now `CELL_PX`; `TILE` itself is the
-//     tile-code enum at the top of this file.
-//   - the old `WALL` / `FLOOR` theme-index objects are now `WALL_THEME` /
-//     `FLOOR_THEME` to avoid colliding with TILE.WALL / TILE.FLOOR.
+// SCORING  [PLACEHOLDER – exact values not ROM-confirmed]
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const FPS = 60;
-export const CELL_PX = 32;          // tile size on screen, in pixels (was TILE)
-export const STILE   = 32;          // sprite tile size
+export const SCORE = Object.freeze({
+  KILL_GHOST:     100,   // PLACEHOLDER
+  KILL_GRUNT:     100,
+  KILL_DEMON:     200,
+  KILL_SORCERER:  200,
+  KILL_LOBBER:    200,
+  KILL_DEATH:     1000,  // Death is hard to kill
+  KILL_THIEF:     500,
+  DESTROY_GEN:    250,
+  COLLECT_FOOD:   100,
+  COLLECT_CHEST:  500,
+  COLLECT_BAG:    200,
+  COLLECT_KEY:    0,     // Keys have no score value directly
+  COLLECT_POTION: 0,
+  EXIT_BONUS:     1000,  // Per level
+});
 
-// 8-direction enum.
-export const DIR = {
-  UP: 0, UPRIGHT: 1, RIGHT: 2, DOWNRIGHT: 3,
-  DOWN: 4, DOWNLEFT: 5, LEFT: 6, UPLEFT: 7,
-};
-export const DIR_NAMES = ["up","upright","right","downright","down","downleft","left","upleft"];
+// ═══════════════════════════════════════════════════════════════════════════════
+// DIRECTION SYSTEM  (used by movement, animation, and AI)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// 8 directions, 0 = South (facing toward player at screen start).
+// This maps to sprite sheet row ordering (HYPOTHESIS based on arcade convention).
+
+export const DIR = Object.freeze({
+  S:  0, SW: 1, W:  2, NW: 3,
+  N:  4, NE: 5, E:  6, SE: 7,
+});
+
+// Direction → velocity vector (normalised to ±1)
 export const DIR_VEC = [
-  [ 0, -1], [ 1, -1], [ 1, 0], [ 1, 1],
-  [ 0,  1], [-1,  1], [-1, 0], [-1,-1],
+  { dx:  0, dy:  1 },  // S
+  { dx: -1, dy:  1 },  // SW
+  { dx: -1, dy:  0 },  // W
+  { dx: -1, dy: -1 },  // NW
+  { dx:  0, dy: -1 },  // N
+  { dx:  1, dy: -1 },  // NE
+  { dx:  1, dy:  0 },  // E
+  { dx:  1, dy:  1 },  // SE
 ];
 
-export const PREFERRED_DIRECTIONS = {
-  [DIR.UPLEFT]:    [DIR.UPLEFT,    DIR.LEFT,     DIR.UP,        DIR.UPRIGHT,  DIR.DOWNLEFT],
-  [DIR.UPRIGHT]:   [DIR.UPRIGHT,   DIR.RIGHT,    DIR.UP,        DIR.UPLEFT,   DIR.DOWNRIGHT],
-  [DIR.DOWNLEFT]:  [DIR.DOWNLEFT,  DIR.LEFT,     DIR.DOWN,      DIR.UPLEFT,   DIR.DOWNRIGHT],
-  [DIR.DOWNRIGHT]: [DIR.DOWNRIGHT, DIR.RIGHT,    DIR.DOWN,      DIR.DOWNLEFT, DIR.UPRIGHT],
-  [DIR.UP]:        [DIR.UP,        DIR.UPLEFT,   DIR.UPRIGHT,   DIR.LEFT,     DIR.RIGHT],
-  [DIR.DOWN]:      [DIR.DOWN,      DIR.DOWNLEFT, DIR.DOWNRIGHT, DIR.LEFT,     DIR.RIGHT],
-  [DIR.LEFT]:      [DIR.LEFT,      DIR.UPLEFT,   DIR.DOWNLEFT,  DIR.UP,       DIR.DOWN],
-  [DIR.RIGHT]:     [DIR.RIGHT,     DIR.UPRIGHT,  DIR.DOWNRIGHT, DIR.UP,       DIR.DOWN],
-};
+// 4 cardinal directions for player movement
+export const CARDINAL = [DIR.S, DIR.W, DIR.N, DIR.E];
 
-export const SLIDE_DIRECTIONS = {
-  [DIR.UPLEFT]:    [DIR.UPLEFT,    DIR.UP,   DIR.LEFT],
-  [DIR.UPRIGHT]:   [DIR.UPRIGHT,   DIR.UP,   DIR.RIGHT],
-  [DIR.DOWNLEFT]:  [DIR.DOWNLEFT,  DIR.DOWN, DIR.LEFT],
-  [DIR.DOWNRIGHT]: [DIR.DOWNRIGHT, DIR.DOWN, DIR.RIGHT],
-  [DIR.UP]:    [DIR.UP],
-  [DIR.DOWN]:  [DIR.DOWN],
-  [DIR.LEFT]:  [DIR.LEFT],
-  [DIR.RIGHT]: [DIR.RIGHT],
-};
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTROLS  (keyboard mapping, 4 players)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export function isUp(d)         { return d === DIR.UP || d === DIR.UPLEFT || d === DIR.UPRIGHT; }
-export function isDown(d)       { return d === DIR.DOWN || d === DIR.DOWNLEFT || d === DIR.DOWNRIGHT; }
-export function isLeft(d)       { return d === DIR.LEFT || d === DIR.UPLEFT || d === DIR.DOWNLEFT; }
-export function isRight(d)      { return d === DIR.RIGHT || d === DIR.UPRIGHT || d === DIR.DOWNRIGHT; }
-export function isHorizontal(d) { return d === DIR.LEFT || d === DIR.RIGHT; }
-export function isVertical(d)   { return d === DIR.UP || d === DIR.DOWN; }
-export function isDiagonal(d)   { return d === DIR.UPLEFT || d === DIR.UPRIGHT || d === DIR.DOWNLEFT || d === DIR.DOWNRIGHT; }
+export const KEYS = Object.freeze([
+  // Player 1: WASD + G (shoot) + H (magic)
+  { up:'KeyW', down:'KeyS', left:'KeyA', right:'KeyD', shoot:'KeyG', magic:'KeyH' },
+  // Player 2: IJKL + ; (shoot) + ' (magic)
+  { up:'KeyI', down:'KeyK', left:'KeyJ', right:'KeyL', shoot:'Semicolon', magic:'Quote' },
+  // Player 3: Arrow keys + . (shoot) + , (magic)
+  { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', shoot:'Period', magic:'Comma' },
+  // Player 4: Numpad 8/2/4/6 + 0 (shoot) + Enter (magic)
+  { up:'Numpad8', down:'Numpad2', left:'Numpad4', right:'Numpad6', shoot:'Numpad0', magic:'NumpadEnter' },
+]);
 
-// ── Engine-side player behaviour ───────────────────────────────────────────────
-// One entry per HEROES[] slot. The runtime imports PLAYER_TYPES for tile/anim
-// keys + behaviour stats; sprite paths and visual stats come from HEROES above.
-export const PLAYER_TYPES = {
-  WARRIOR:  { key:"warrior",  name:"Thor the Warrior",     color:"#4488ff", weaponSound:"firewarrior",  health: 700, speed: 200/FPS, damage: 50/FPS, armor: 3, magic: 16, weaponSpeed: 600/FPS, reload: 0.40*FPS, weaponDamage: 4, weaponRotate: true,  voice:"male"   },
-  VALKYRIE: { key:"valkyrie", name:"Thyra the Valkyrie",   color:"#ff8844", weaponSound:"firevalkyrie", health: 600, speed: 220/FPS, damage: 40/FPS, armor: 2, magic: 16, weaponSpeed: 620/FPS, reload: 0.35*FPS, weaponDamage: 4, weaponRotate: false, voice:"female" },
-  WIZARD:   { key:"wizard",   name:"Merlin the Wizard",    color:"#ff44ff", weaponSound:"firewizard",   health: 500, speed: 240/FPS, damage: 30/FPS, armor: 1, magic: 32, weaponSpeed: 640/FPS, reload: 0.30*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
-  ELF:      { key:"elf",      name:"Questor the Elf",      color:"#44ff44", weaponSound:"fireelf",      health: 500, speed: 260/FPS, damage: 20/FPS, armor: 1, magic: 24, weaponSpeed: 660/FPS, reload: 0.25*FPS, weaponDamage: 6, weaponRotate: false, voice:"male"   },
-};
-export const PLAYER_LIST = ["WARRIOR","VALKYRIE","WIZARD","ELF"];
+// ═══════════════════════════════════════════════════════════════════════════════
+// PALETTE  (colours used when sprite not available)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// Monster behaviour stats. Keys named after MON.* slots so entities.js can
-// resolve MONSTER_TYPES[MONSTER_LIST[subType]] from a level-pixel sub-byte.
-export const MONSTER_TYPES = {
-  GHOST:    { key:"ghost",    score:  10, health:  4, speed: 140/FPS, damage: 100/FPS, selfharm: 30/FPS, canBeShot: true,  canBeHit: false, invisibility: null,                 thinking: 0.5*FPS, travelling: 0.5*FPS, weapon: null,                                                                                                                generator: { health:  8, rate: 2.5*FPS, max: 40, score: 100 } },
-  DEMON:    { key:"demon",    score:  20, health:  4, speed:  80/FPS, damage:  60/FPS, selfharm: 0,      canBeShot: true,  canBeHit: true,  invisibility: null,                 thinking: 0.5*FPS, travelling: 0.5*FPS, weapon: { speed: 240/FPS, reload: 2*FPS,   damage: 10, rotate: false, projectile: "fireball" },                            generator: { health: 16, rate: 3.0*FPS, max: 40, score: 200 } },
-  GRUNT:    { key:"grunt",    score:  30, health:  8, speed: 120/FPS, damage:  60/FPS, selfharm: 0,      canBeShot: true,  canBeHit: true,  invisibility: null,                 thinking: 0.5*FPS, travelling: 0.5*FPS, weapon: null,                                                                                                                generator: { health: 16, rate: 3.5*FPS, max: 40, score: 300 } },
-  SORCERER: { key:"sorcerer", score:  30, health:  8, speed: 120/FPS, damage:  60/FPS, selfharm: 0,      canBeShot: true,  canBeHit: true,  invisibility: { on: 3*FPS, off: 6*FPS }, thinking: 0.5*FPS, travelling: 0.5*FPS, weapon: null,                                                                                                          generator: { health: 24, rate: 4.0*FPS, max: 20, score: 400 } },
-  LOBBER:   { key:"lobber",   score:  40, health:  6, speed: 100/FPS, damage:  60/FPS, selfharm: 0,      canBeShot: true,  canBeHit: true,  invisibility: null,                 thinking: 0.6*FPS, travelling: 0.5*FPS, weapon: { speed: 280/FPS, reload: 2.2*FPS, damage: 14, rotate: false, projectile: "lobshot", lob: true },                generator: { health: 20, rate: 4.0*FPS, max: 30, score: 350 } },
-  DEATH:    { key:"death",    score: 500, health: 12, speed: 180/FPS, damage: 120/FPS, selfharm: 6/FPS,  canBeShot: false, canBeHit: false, invisibility: null,                 thinking: 0.5*FPS, travelling: 0.5*FPS, weapon: null,                                                                                                                generator: { health: 16, rate: 5.0*FPS, max: 10, score: 500 } },
-  THIEF:    { key:"thief",    score: 100, health:  3, speed: 280/FPS, damage:   0,     selfharm: 0,      canBeShot: true,  canBeHit: true,  invisibility: null,                 thinking: 0.3*FPS, travelling: 0.3*FPS, weapon: null, steals: true,                                                                                                  generator: null },
-};
-// Order matches MON.* numeric values, so MONSTER_LIST[MON.GHOST] === "GHOST".
-export const MONSTER_LIST = ["GHOST","DEMON","GRUNT","SORCERER","LOBBER","DEATH","THIEF"];
-
-// Treasure / pickup engine stats. Order matches the level-pixel sub-type byte
-// (0x0080nn): 0 health, 1 poison, 2-4 food, 5 key, 6 potion, 7 gold, 8 chest.
-export const TREASURE_TYPES = {
-  HEALTH: { key:"health", score:  10, health: 100,            sound:"collectpotion" },
-  POISON: { key:"poison", score:   0, damage: 100,            sound:"collectpotion" },
-  FOOD1:  { key:"food1",  score:  10, health:  50,            sound:"collectfood"   },
-  FOOD2:  { key:"food2",  score:  10, health:  60,            sound:"collectfood"   },
-  FOOD3:  { key:"food3",  score:  10, health:  70,            sound:"collectfood"   },
-  KEY:    { key:"key",    score: 100, take: "key",            sound:"collectkey"    },
-  POTION: { key:"potion", score: 200, take: "potion",         sound:"collectpotion" },
-  GOLD:   { key:"gold",   score: 250,                         sound:"collectgold"   },
-  CHEST:  { key:"chest",  score:1000,                         sound:"collectgold"   },
-};
-export const TREASURE_LIST = ["HEALTH","POISON","FOOD1","FOOD2","FOOD3","KEY","POTION","GOLD","CHEST"];
-
-// Door / Gate engine descriptors. The level loader picks HORIZONTAL or VERTICAL
-// based on the gate's PIXEL.GATE_V flag (low byte = 0x40) vs PIXEL.GATE_H.
-export const DOOR = {
-  HORIZONTAL: { key:"horiz", openSpeed: 0.3*FPS, horizontal: true },
-  VERTICAL:   { key:"vert",  openSpeed: 0.3*FPS, vertical: true },
-  EXIT:       { key:"exit",  exitSpeed: 1.5*FPS },
-};
-
-// Collision boxes (relative to CELL_PX-sized cell)
-export const CBOX = {
-  FULL:    { x: 0,            y: 0,            w: CELL_PX,      h: CELL_PX },
-  PLAYER:  { x: CELL_PX/4,    y: CELL_PX/4,    w: CELL_PX/2,    h: CELL_PX - CELL_PX/4 },
-  WEAPON:  { x: CELL_PX/3,    y: CELL_PX/3,    w: CELL_PX/3,    h: CELL_PX/3 },
-  MONSTER: { x: 1,            y: 1,            w: CELL_PX - 2,  h: CELL_PX - 2 },
-};
-
-// Health auto-drain rate: 1 HP per ~half second (matches arcade).
-export const AUTO_HURT_FRAMES = FPS / 2;
-
-// Scoring
-export const SCORE_PER_LEVEL = 1000;
-
-// Camera follows centroid of active players
-export const VIEWPORT = { TW: 20, TH: 14 }; // tiles wide x high
-
-// Wall + floor THEME indices into the ROM tile atlas (backgrounds.png).
-// Renamed from WALL/FLOOR (clashed with TILE.WALL / TILE.FLOOR above).
-export const WALL_THEME = {
-  BLUE: 1, BLUE_BRICK: 2, PURPLE_TILE: 3,
-  BLUE_COBBLE: 4, PURPLE_COBBLE: 5, CONCRETE: 6,
-  MAX: 6,
-};
-export const FLOOR_THEME = {
-  BROWN_BOARDS: 1, LIGHTBROWN_BOARDS: 2, GREEN_BOARDS: 3, GREY_BOARDS: 4,
-  WOOD: 5, LIGHT_STONE: 6, DARK_STONE: 7,
-  BROWN_LAMINATE: 8, PURPLE_LAMINATE: 9,
-};
+export const PALETTE = Object.freeze({
+  floor:       '#111111',
+  wall:        '#8b5a00',  // Orange-brown — placeholder for decoded stone tile
+  gate:        '#6666cc',  // Blue — gates (backup if sprite not loaded)
+  spawn:       '#00aa00',
+  exit:        '#004400',
+  ghost_gen:   '#444466',
+  monster_gen: '#664422',
+  item:        '#ffff44',
+  hud_bg:      '#000000',
+  hud_text:    '#ffff00',
+  health_hi:   '#00ff00',
+  health_lo:   '#ff0000',
+  p1:          '#4488ff',
+  p2:          '#ff8844',
+  p3:          '#44ff44',
+  p4:          '#ff44ff',
+});
