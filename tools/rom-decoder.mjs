@@ -403,11 +403,98 @@ function decodeLevels(cpu) {
   return levels;
 }
 
+// ── Post-process: reclassify + populate ──────────────────────────────────────
+// The upstream RLE body decoder writes only the per-level tile codes from
+// header bytes 10-13 — those are entity codes ($09, $19, $1A, $28 for maze1
+// etc.), so the body cells decode to "generator" pixels even when the source
+// maze geometry is mostly walls. Positional entities (key/exit/spawn/specific
+// generators) appear to live outside the simple RLE block we currently parse.
+//
+// Until that's fully decoded, we synthesize a playable level by:
+//   1. Reclassifying any contiguous block of >= WALL_BLOCK_MIN same-coded
+//      "entity" cells as wall — those are wall textures the RLE was emitting.
+//   2. After step 1: placing a player SPAWN ($05) in the top-left walkable
+//      cell, a single EXIT ($06) in the bottom-right walkable cell, and a
+//      small number of ghost generators ($19) in walkable cells near the
+//      level's centre. The result is a playable maze with combat content.
+const WALL_BLOCK_MIN = 4;
+const MAX_GENERATORS = 3;
+
+function postProcessGrid(grid) {
+  const out = new Uint8Array(grid);
+  const N = 32;
+  const isEntity = (c) =>
+    (c >= 0x09 && c <= 0x27) || c === 0x2A;
+  const isWalkable = (c) =>
+    c === 0x00 || (c >= 0x3C && c <= 0x3F) || c === 0x05;
+
+  // Step 1: flood-fill same-coded entity cells; large components → wall.
+  const seen  = new Uint8Array(N * N);
+  const stack = new Int32Array(N * N);
+  for (let i = 0; i < N * N; i++) {
+    if (seen[i]) continue;
+    const c = grid[i];
+    if (!isEntity(c)) continue;
+    let sp = 0;
+    stack[sp++] = i; seen[i] = 1;
+    const cells = [];
+    while (sp) {
+      const off = stack[--sp];
+      cells.push(off);
+      const y = (off / N) | 0, x = off - y * N;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
+        const no = ny * N + nx;
+        if (seen[no] || grid[no] !== c) continue;
+        seen[no] = 1; stack[sp++] = no;
+      }
+    }
+    if (cells.length >= WALL_BLOCK_MIN) {
+      for (const o of cells) out[o] = 0x01;
+    } else {
+      // Keep small clumps as ghost generator L1 — playable spawner.
+      for (const o of cells) out[o] = 0x19;
+    }
+  }
+
+  // Step 2: collect walkable cells (excluding edge ring so things sit cleanly)
+  const walkable = [];
+  for (let r = 1; r < N - 1; r++) {
+    for (let c = 1; c < N - 1; c++) {
+      if (isWalkable(out[r * N + c])) walkable.push({ c, r, i: r * N + c });
+    }
+  }
+  if (walkable.length === 0) return out; // nothing we can do
+
+  // Place spawn: first walkable cell in raster order
+  out[walkable[0].i] = 0x05;
+
+  // Place exit: last walkable cell in raster order (different from spawn)
+  if (walkable.length > 1) {
+    out[walkable[walkable.length - 1].i] = 0x06;
+  }
+
+  // Place a handful of ghost generators: pick walkable cells distributed
+  // across the maze. Skip the first and last (spawn/exit).
+  const inner = walkable.slice(1, walkable.length - 1);
+  if (inner.length > 0) {
+    const step = Math.max(1, Math.floor(inner.length / (MAX_GENERATORS + 1)));
+    for (let k = 1; k <= MAX_GENERATORS; k++) {
+      const cell = inner[Math.min(inner.length - 1, k * step)];
+      if (cell) out[cell.i] = 0x19; // ghost generator L1
+    }
+  }
+
+  return out;
+}
+
 // ── PNG renderer for one level ────────────────────────────────────────────────
 function levelToPng(grid) {
+  const cleaned = postProcessGrid(grid);
   const pixels = new Uint32Array(32 * 32);
   for (let i = 0; i < 1024; i++) {
-    const code = grid[i] & 0x3F;
+    const code = cleaned[i] & 0x3F;
     pixels[i] = TILE_TO_PIXEL[code];
   }
   return writePng(pixels, 32, 32);

@@ -128,6 +128,7 @@ export class Player {
         false,
       ));
       this.shotCd = 300 / (this.hero.shotSpeed || 1);
+      this._didFire = true;     // game.js consumes this flag for SFX
     }
 
     // ── Magic ───────────────────────────────────────────────────────────────
@@ -165,12 +166,14 @@ export class Player {
       if (ec !== col || er !== row) continue;
 
       const k = e.itemKind || "";
-      if (k === "key")                                  { this.keys++;    e.dead = true; this.score += SCORE.COLLECT_KEY; }
-      else if (k === "potion_magic" || k === "invisibility") { this.potions++; e.dead = true; this.score += SCORE.COLLECT_POTION; }
-      else if (k.startsWith("food_"))                    { this.hp += DMG.FOOD_HP; e.dead = true; this.score += SCORE.COLLECT_FOOD; }
-      else if (k === "treasure_chest")                   { e.dead = true; this.score += SCORE.COLLECT_CHEST; }
-      else if (k === "treasure_bag")                     { e.dead = true; this.score += SCORE.COLLECT_BAG; }
-      else if (k.startsWith("plus_"))                    { e.dead = true; this.score += SCORE.COLLECT_BAG; }
+      let sfx = null;
+      if (k === "key")                                  { this.keys++;    e.dead = true; this.score += SCORE.COLLECT_KEY;    sfx = "collectkey"; }
+      else if (k === "potion_magic" || k === "invisibility") { this.potions++; e.dead = true; this.score += SCORE.COLLECT_POTION; sfx = "collectpotion"; }
+      else if (k.startsWith("food_"))                    { this.hp += DMG.FOOD_HP; e.dead = true; this.score += SCORE.COLLECT_FOOD;   sfx = "collectfood"; }
+      else if (k === "treasure_chest")                   { e.dead = true; this.score += SCORE.COLLECT_CHEST; sfx = "collectgold"; }
+      else if (k === "treasure_bag")                     { e.dead = true; this.score += SCORE.COLLECT_BAG;   sfx = "collectgold"; }
+      else if (k.startsWith("plus_"))                    { e.dead = true; this.score += SCORE.COLLECT_BAG;   sfx = "collectgold"; }
+      if (sfx) this._lastPickup = sfx;     // game.js consumes this
     }
   }
 
