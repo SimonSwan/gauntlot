@@ -5,11 +5,11 @@
  * keys, potions, and a per-frame input → movement / shoot / magic loop.
  *
  * Coordinate system matches entities.js: 16px tile grid, world positions in
- * pixels, entity centre = (wx + 12, wy + 12).
+ * pixels, entity centre = (wx + HALF_CELL, wy + HALF_CELL).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { HEROES, DMG, TIME, DIR, DIR_VEC, SCORE } from "./constants.js";
+import { HEROES, DMG, TIME, DIR, DIR_VEC, SCORE, CELL, HALF_CELL, PLAYER_HITBOX } from "./constants.js";
 import { Projectile } from "./entities.js";
 import { T } from "./level.js";
 
@@ -40,28 +40,30 @@ export class Player {
     this.drainAcc  = 0;
   }
 
-  get cx() { return this.wx + 12; }
-  get cy() { return this.wy + 12; }
-  get tileCol() { return Math.floor(this.cx / 16); }
-  get tileRow() { return Math.floor(this.cy / 16); }
+  get cx() { return this.wx + HALF_CELL; }
+  get cy() { return this.wy + HALF_CELL; }
+  get tileCol() { return Math.floor(this.cx / CELL); }
+  get tileRow() { return Math.floor(this.cy / CELL); }
 
   /**
-   * Would a 24x24 sprite at (wx, wy) overlap any wall / locked-gate tile?
-   * Sprite occupies world pixels (wx-4 .. wx+20, wy-4 .. wy+20) because the
-   * renderer offsets the 24-px sprite by -(SPRPX-CELL)/2 = -4 to centre it
-   * on the 16x16 tile.  Returns true if blocked.
+   * Would the player's PLAYER_HITBOX sub-rect at (wx, wy) overlap any wall
+   * or locked-gate tile?  Following jakesgordon's model, the hitbox is the
+   * lower body (12-wide x 16-tall, offset (6, 8) inside the 24x24 tile) so
+   * the head / arms can decoratively pass close to walls but the legs / torso
+   * can't.  Returns true if blocked.
    * @private
    */
   _spriteBlocked(wx, wy, level) {
+    const b = PLAYER_HITBOX;
     const corners = [
-      [wx -  4, wy -  4],
-      [wx + 20, wy -  4],
-      [wx -  4, wy + 20],
-      [wx + 20, wy + 20],
+      [wx + b.x,         wy + b.y        ],
+      [wx + b.x + b.w-1, wy + b.y        ],
+      [wx + b.x,         wy + b.y + b.h-1],
+      [wx + b.x + b.w-1, wy + b.y + b.h-1],
     ];
     for (const [px, py] of corners) {
-      const c = Math.floor(px / 16);
-      const r = Math.floor(py / 16);
+      const c = Math.floor(px / CELL);
+      const r = Math.floor(py / CELL);
       if (c < 0 || c > 31 || r < 0 || r > 31) return true;
       if (level.isBlocked(c, r)) return true;
     }
@@ -69,8 +71,8 @@ export class Player {
   }
 
   spawnAt(col, row) {
-    this.wx = col * 16;
-    this.wy = row * 16;
+    this.wx = col * CELL;
+    this.wy = row * CELL;
     this.hp = Math.max(this.hp, TIME.PLAYER_START_HP);
     this.dead = false;
     this.invuln = TIME.INVULN_MS;
@@ -213,7 +215,7 @@ export class Player {
     for (const e of mgr.entities) {
       if (!e || e.dead) continue;
       if (e.constructor.name !== "Item") continue;
-      const ec = Math.floor(e.cx / 16), er = Math.floor(e.cy / 16);
+      const ec = Math.floor(e.cx / CELL), er = Math.floor(e.cy / CELL);
       if (ec !== col || er !== row) continue;
 
       const k = e.itemKind || "";

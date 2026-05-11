@@ -53,7 +53,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { TILE, WALL_CODES, EXIT_CODES, GATE_CODES, FLOOR_CODES, MON } from './constants.js';
+import { TILE, WALL_CODES, EXIT_CODES, GATE_CODES, FLOOR_CODES, MON, CELL } from './constants.js';
 
 // ── Tile type constants (internal to level.js) ────────────────────────────────
 // These are the tile TYPE values stored in Level.grid[i].type.
@@ -255,8 +255,8 @@ export class Level {
         tile.col = col;
         tile.row = row;
         // World pixel position of this tile's top-left corner (16px per tile)
-        tile.wx = col * 16;
-        tile.wy = row * 16;
+        tile.wx = col * CELL;
+        tile.wy = row * CELL;
 
         this.grid.push(tile);
 
@@ -347,8 +347,8 @@ export class Level {
    */
   worldToTile(wx, wy) {
     return {
-      col: Math.floor(wx / 16),
-      row: Math.floor(wy / 16),
+      col: Math.floor(wx / CELL),
+      row: Math.floor(wy / CELL),
     };
   }
 }

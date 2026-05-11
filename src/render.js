@@ -12,13 +12,12 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { HW, RENDER, PALETTE, MON, HEROES, DIR, DIR_VEC, MON_NAME } from "./constants.js";
+import { HW, RENDER, PALETTE, MON, HEROES, DIR, DIR_VEC, MON_NAME, CELL } from "./constants.js";
 import { T } from "./level.js";
 import { Assets } from "./assets.js";
 import { Monster, Generator, Projectile, Item, Fx } from "./entities.js";
 
-const CELL  = 16;     // world px per tile
-const SPRPX = 24;     // sprite frame size in world px
+const SPRPX = 24;     // sprite frame size in world px (equals CELL)
 
 // Reference layout (per jakesgordon/javascript-gauntlet):
 //   canvas split 75% playfield / 25% scoreboard.
@@ -42,13 +41,14 @@ export class Render {
     // Reserve a quarter of the canvas for the scoreboard column.
     const hudW   = Math.max(140, Math.floor(W * HUD_FRACT));
     const availW = Math.max(1, W - hudW);
-    // Pick an integer scale that fits VIEW_TILES x VIEW_TILES into the
-    // available area; integer keeps sprites crisp.
-    const sx = Math.floor(availW / (VIEW_TILES * CELL));
-    const sy = Math.floor(H      / (VIEW_TILES * CELL));
-    this.scale = Math.max(1, Math.min(sx, sy));
-    this.viewW = VIEW_TILES * CELL * this.scale;
-    this.viewH = VIEW_TILES * CELL * this.scale;
+    // Pick the largest scale that fits VIEW_TILES x VIEW_TILES into the
+    // available area (non-integer ok — imageSmoothingEnabled=false keeps
+    // sprites crisp at any scale).
+    const sx = availW / (VIEW_TILES * CELL);
+    const sy = H      / (VIEW_TILES * CELL);
+    this.scale = Math.max(0.5, Math.min(sx, sy));
+    this.viewW = Math.floor(VIEW_TILES * CELL * this.scale);
+    this.viewH = Math.floor(VIEW_TILES * CELL * this.scale);
     this.viewX = Math.floor((availW - this.viewW) / 2);
     this.viewY = Math.floor((H      - this.viewH) / 2);
     this.hudX  = availW;     // HUD starts where the playfield ends
@@ -186,8 +186,8 @@ export class Render {
     const S = this.scale, sprite = SPRPX * S;
     for (const e of mgr.entities) {
       if (!(e instanceof Generator) || e.dead) continue;
-      const sx = this.viewX + e.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + e.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + e.wx * S - this.cameraX;
+      const sy = this.viewY + e.wy * S - this.cameraY;
       const key = e.monType === MON.GHOST ? "ghost_gen" : "monster_gen";
       const img = Assets.img[key];
       // Frame column = clamp(level-1, 0..2)
@@ -224,8 +224,8 @@ export class Render {
     const S = this.scale, sprite = SPRPX * S;
     for (const e of mgr.entities) {
       if (!(e instanceof Monster) || e.dead) continue;
-      const sx = this.viewX + e.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + e.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + e.wx * S - this.cameraX;
+      const sy = this.viewY + e.wy * S - this.cameraY;
       const key = Assets.monsterSheetKey(e.monType, e.theme || 0);
       const img = Assets.img[key];
       if (img) {
@@ -302,8 +302,8 @@ export class Render {
     const S = this.scale, sprite = SPRPX * S;
     for (const p of players) {
       if (!p.joined || p.dead) continue;
-      const sx = this.viewX + p.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + p.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + p.wx * S - this.cameraX;
+      const sy = this.viewY + p.wy * S - this.cameraY;
       const img = Assets.img[p.hero.id];
       if (img) {
         const row = Math.min(p.hero.frameRows - 1, p.dir | 0);

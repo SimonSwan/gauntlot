@@ -32,7 +32,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { MON, DMG, TIME, SCORE, RENDER, DIR, DIR_VEC } from './constants.js';
+import { MON, DMG, TIME, SCORE, RENDER, DIR, DIR_VEC, CELL, HALF_CELL, MONSTER_HITBOX } from './constants.js';
 import { T as TILE_T } from './level.js';
 
 // Upper-case monster names for SCORE table lookup
@@ -57,13 +57,13 @@ class Entity {
   }
 
   /** Centre X in world pixels */
-  get cx() { return this.wx + 12; }
+  get cx() { return this.wx + HALF_CELL; }
   /** Centre Y in world pixels */
-  get cy() { return this.wy + 12; }
+  get cy() { return this.wy + HALF_CELL; }
   /** Current tile column */
-  get tileCol() { return Math.floor(this.cx / 16); }
+  get tileCol() { return Math.floor(this.cx / CELL); }
   /** Current tile row */
-  get tileRow()  { return Math.floor(this.cy / 16); }
+  get tileRow()  { return Math.floor(this.cy / CELL); }
 
   /**
    * Distance to another entity (centre to centre).
@@ -273,26 +273,25 @@ export class Monster extends Entity {
 
   /**
    * Try to move by (dx, dy) pixels.  Returns true if movement succeeded.
-   * Every monster is blocked by walls and locked gates.
-   *
-   * Uses the full 24x24 sprite extent as the collision hitbox: the renderer
-   * offsets the 24-px sprite by -(SPRPX-CELL)/2 = -4, so the sprite spans
-   * (wx-4 .. wx+20, wy-4 .. wy+20).  Checking those four corners against
-   * walls / locked gates means the sprite never visually overlaps a wall.
+   * Uses MONSTER_HITBOX (22x22 inside the 24x24 tile, 1-px wiggle each side)
+   * as the collision rect, following jakesgordon's model — large enough that
+   * the sprite never visually overhangs a wall, small enough that single-tile
+   * corridors stay traversable.
    * @private
    */
   _tryMove(dx, dy, level) {
     const nx = this.wx + dx;
     const ny = this.wy + dy;
+    const b  = MONSTER_HITBOX;
     const corners = [
-      [nx -  4, ny -  4],
-      [nx + 20, ny -  4],
-      [nx -  4, ny + 20],
-      [nx + 20, ny + 20],
+      [nx + b.x,         ny + b.y        ],
+      [nx + b.x + b.w-1, ny + b.y        ],
+      [nx + b.x,         ny + b.y + b.h-1],
+      [nx + b.x + b.w-1, ny + b.y + b.h-1],
     ];
     for (const [px, py] of corners) {
-      const c = Math.floor(px / 16);
-      const r = Math.floor(py / 16);
+      const c = Math.floor(px / CELL);
+      const r = Math.floor(py / CELL);
       if (c < 0 || c > 31 || r < 0 || r > 31) return false;
       if (level.isBlocked(c, r)) return false;
     }
@@ -435,8 +434,8 @@ export class Projectile extends Entity {
     if (this.lifetime <= 0) { this.dead = true; return; }
 
     // Off-grid? die so shots can't accumulate when fired toward open level edges
-    const col = Math.floor(this.cx / 16);
-    const row = Math.floor(this.cy / 16);
+    const col = Math.floor(this.cx / CELL);
+    const row = Math.floor(this.cy / CELL);
     if (col < 0 || col >= 32 || row < 0 || row >= 32) { this.dead = true; return; }
     if (level.isBlocked(col, row)) { this.dead = true; }
   }
@@ -621,8 +620,8 @@ export class EntityManager {
     const T = TILE_T;
 
     for (const tile of level.grid) {
-      const wx = tile.col * 16;
-      const wy = tile.row * 16;
+      const wx = tile.col * CELL;
+      const wy = tile.row * CELL;
 
       switch (tile.type) {
         case T.GENERATOR: {
@@ -685,7 +684,7 @@ export class EntityManager {
 
   /** Detonate a magic potion — kills all non-Death monsters in radius */
   detonateMagic(cx, cy, radiusTiles, players) {
-    const radiusPx = radiusTiles * 16;
+    const radiusPx = radiusTiles * CELL;
     let score = 0;
     for (const e of this.entities) {
       if (e instanceof Monster && !e.dead) {

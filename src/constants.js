@@ -46,9 +46,24 @@ export const HW = Object.freeze({
 // RENDER SETTINGS  (our canvas renderer, not ROM hardware)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// World pixel size of one tile on the maze grid.  Matches the sprite frame
+// size (HW.SPRITE_PX = 24) so the sprite never overhangs the tile and the
+// renderer doesn't need a centring offset.  Sprite-vs-wall collisions use a
+// sub-rect of the tile (see PLAYER_HITBOX / MONSTER_HITBOX below).
+export const CELL      = 24;
+export const HALF_CELL = 12;
+
+// Collision sub-rect inside the 24x24 tile.  Following jakesgordon's model:
+//   - Player body: 12-wide x 16-tall, offset (6, 8) - lower-body / torso.
+//   - Monster:     1-px wiggle inside the full tile (22 x 22, offset (1, 1)).
+// Coordinates are tile-local (0..CELL); the actual world rect is
+// (wx + x, wy + y, w, h).
+export const PLAYER_HITBOX  = Object.freeze({ x: 6, y: 8, w: 12, h: 16 });
+export const MONSTER_HITBOX = Object.freeze({ x: 1, y: 1, w: 22, h: 22 });
+
 export const RENDER = Object.freeze({
-  // Pixels per logical tile on our canvas
-  CELL:             16,
+  // Pixels per logical tile on our canvas — kept here for any legacy refs.
+  CELL:             24,
   // Canvas scale factor (applied via CSS transform for sharp pixels)
   SCALE:            3,
   // Tiles visible in viewport (ceil to avoid black edges)
@@ -260,22 +275,22 @@ export const TIME = Object.freeze({
   // Max monsters spawned by one generator before it stops  [PLACEHOLDER]
   GEN_MAX_SPAWN: 99,
 
-  // Monster walk speed in pixels per second  [PLACEHOLDER]
-  GHOST_SPEED_PX:    48,  // Ghosts are wall-blocked like every other monster
-  GRUNT_SPEED_PX:    40,
-  DEMON_SPEED_PX:    44,
-  SORCERER_SPEED_PX: 36,
-  LOBBER_SPEED_PX:   32,
-  DEATH_SPEED_PX:    28,  // Slow but dangerous
-  THIEF_SPEED_PX:    96,  // Very fast
+  // Monster walk speed in pixels per second (scaled to CELL=24 world).
+  GHOST_SPEED_PX:    72,
+  GRUNT_SPEED_PX:    60,
+  DEMON_SPEED_PX:    66,
+  SORCERER_SPEED_PX: 54,
+  LOBBER_SPEED_PX:   48,
+  DEATH_SPEED_PX:    42,
+  THIEF_SPEED_PX:    144,
 
-  // Player walk speed in pixels per second  [PLACEHOLDER]
-  PLAYER_SPEED_PX:   80,
+  // Player walk speed in pixels per second (scaled to CELL=24 world).
+  PLAYER_SPEED_PX:   120,
 
-  // Projectile speed in pixels per second  [PLACEHOLDER]
-  PLAYER_SHOT_SPEED: 200,
-  DEMON_SHOT_SPEED:  120,
-  LOBBER_PEAK_HEIGHT: 40, // Lobber arc peak in pixels  [PLACEHOLDER]
+  // Projectile speed in pixels per second (scaled to CELL=24 world).
+  PLAYER_SHOT_SPEED: 300,
+  DEMON_SHOT_SPEED:  180,
+  LOBBER_PEAK_HEIGHT: 60,
 
   // Animation frame duration in ms  [PLACEHOLDER]
   ANIM_FRAME_MS: 100,     // 10fps animation

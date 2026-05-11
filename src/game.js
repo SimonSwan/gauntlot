@@ -18,7 +18,7 @@ import { EntityManager, Monster, Projectile, Generator, Fx } from "./entities.js
 import { Player }      from "./player.js";
 import { Render }      from "./render.js";
 import { Sounds }      from "./sounds.js";
-import { HEROES, TIME, DMG, MON, PALETTE } from "./constants.js";
+import { HEROES, TIME, DMG, MON, PALETTE, CELL } from "./constants.js";
 
 const FIRE_SFX = ["firewarrior", "firevalkyrie", "fireelf", "firewizard"];
 const MUSIC    = [
@@ -343,8 +343,8 @@ export class Game {
         if (e.monType !== MON.GHOST && e.monType !== MON.DEATH && dist < 10) {
           const len  = dist || 1;
           const push = 10 - dist;
-          p.wx = Math.max(0, Math.min(31*16, p.wx + (ddx/len) * push));
-          p.wy = Math.max(0, Math.min(31*16, p.wy + (ddy/len) * push));
+          p.wx = Math.max(0, Math.min(31*CELL, p.wx + (ddx/len) * push));
+          p.wy = Math.max(0, Math.min(31*CELL, p.wy + (ddy/len) * push));
         }
       }
     }
