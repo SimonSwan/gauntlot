@@ -112,55 +112,55 @@ export class Render {
       if (sy + C < this.viewY || sy > this.viewY + this.viewH) continue;
 
       switch (tile.type) {
-        case T.FLOOR:
-          // floor: dark gray + 1px grid line for readability
-          ctx.fillStyle = "#1a1d24";
-          ctx.fillRect(sx, sy, C, C);
-          ctx.fillStyle = "rgba(255,255,255,0.04)";
-          ctx.fillRect(sx, sy, C, 1);
+        case T.FLOOR: {
+          const img = Assets.img['arcade_floor'];
+          if (img) ctx.drawImage(img, sx, sy, C, C);
+          else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           break;
+        }
 
         case T.WALL: {
-          // Stone wall (chars ROM not decoded — flat colour fill per spec)
-          ctx.fillStyle = PALETTE.wall;
-          ctx.fillRect(sx, sy, C, C);
-          ctx.fillStyle = "rgba(255,255,255,0.10)";
-          ctx.fillRect(sx, sy, C, Math.max(1, S));
-          ctx.fillStyle = "rgba(0,0,0,0.3)";
-          ctx.fillRect(sx, sy + C - Math.max(1, S), C, Math.max(1, S));
+          // ROM-extracted wall stamp (16×16 hardware px scaled to CELL).
+          // Source: spr_tiles tiles 0x1c5/0x1c6 with Level 1 wall sub-palette
+          // (palette nib 1, color 0x18).  Top row has the 1-px highlight.
+          const img = Assets.img['arcade_wall'];
+          if (img) ctx.drawImage(img, sx, sy, C, C);
+          else { ctx.fillStyle = PALETTE.wall; ctx.fillRect(sx, sy, C, C); }
           break;
         }
 
         case T.GATE_H:
         case T.GATE_V: {
-          const key = tile.type === T.GATE_H ? "gate_h" : "gate_v";
-          const img = Assets.img[key];
+          const floor = Assets.img['arcade_floor'];
+          if (floor) ctx.drawImage(floor, sx, sy, C, C);
+          else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           if (tile.locked) {
+            const key = tile.type === T.GATE_H ? "gate_h" : "gate_v";
+            const img = Assets.img[key];
             if (img) ctx.drawImage(img, sx, sy, C, C);
             else {
               ctx.fillStyle = PALETTE.gate;
               ctx.fillRect(sx, sy, C, C);
             }
-          } else {
-            // unlocked = floor
-            ctx.fillStyle = "#1a1d24";
-            ctx.fillRect(sx, sy, C, C);
           }
           break;
         }
 
-        case T.SPAWN:
-          ctx.fillStyle = "#1a1d24";
-          ctx.fillRect(sx, sy, C, C);
+        case T.SPAWN: {
+          const floor = Assets.img['arcade_floor'];
+          if (floor) ctx.drawImage(floor, sx, sy, C, C);
+          else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           ctx.fillStyle = PALETTE.spawn;
           ctx.fillRect(sx + C/3, sy + C/3, C/3, C/3);
           break;
+        }
 
         case T.EXIT:
         case T.EXIT_WARP4:
         case T.EXIT_WARP8: {
-          ctx.fillStyle = "#1a1d24";
-          ctx.fillRect(sx, sy, C, C);
+          const floor = Assets.img['arcade_floor'];
+          if (floor) ctx.drawImage(floor, sx, sy, C, C);
+          else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
           const key = tile.type === T.EXIT_WARP4 ? "exit_4"
                     : tile.type === T.EXIT_WARP8 ? "exit_8"
                     : "exit";
@@ -173,10 +173,12 @@ export class Render {
           break;
         }
 
-        default:
+        default: {
           // Generators / items / power-ups are entities, not tiles — draw floor here.
-          ctx.fillStyle = "#1a1d24";
-          ctx.fillRect(sx, sy, C, C);
+          const floor = Assets.img['arcade_floor'];
+          if (floor) ctx.drawImage(floor, sx, sy, C, C);
+          else { ctx.fillStyle = "#1a1d24"; ctx.fillRect(sx, sy, C, C); }
+        }
       }
     }
   }
