@@ -183,20 +183,22 @@ export class Render {
 
   _drawGenerators(mgr) {
     const ctx = this.ctx;
-    const S = this.scale, sprite = SPRPX * S;
+    // Sprite source is 24x24 but we display at tile size (16x16) so sprites
+    // never overflow the tile and visually clip into wall tiles.
+    const S = this.scale, C = CELL * S;
     for (const e of mgr.entities) {
       if (!(e instanceof Generator) || e.dead) continue;
-      const sx = this.viewX + e.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + e.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + e.wx * S - this.cameraX;
+      const sy = this.viewY + e.wy * S - this.cameraY;
       const key = e.monType === MON.GHOST ? "ghost_gen" : "monster_gen";
       const img = Assets.img[key];
       // Frame column = clamp(level-1, 0..2)
       const col = Math.max(0, Math.min(2, (e.level || 1) - 1));
       if (img) {
-        ctx.drawImage(img, col * SPRPX, 0, SPRPX, SPRPX, sx, sy, sprite, sprite);
+        ctx.drawImage(img, col * SPRPX, 0, SPRPX, SPRPX, sx, sy, C, C);
       } else {
         ctx.fillStyle = e.monType === MON.GHOST ? PALETTE.ghost_gen : PALETTE.monster_gen;
-        ctx.fillRect(sx, sy, sprite, sprite);
+        ctx.fillRect(sx, sy, C, C);
       }
     }
   }
@@ -221,11 +223,13 @@ export class Render {
 
   _drawMonsters(mgr) {
     const ctx = this.ctx;
-    const S = this.scale, sprite = SPRPX * S;
+    // 24x24 source rendered into a 16x16 cell — sprite no longer overflows
+    // into adjacent wall tiles.
+    const S = this.scale, C = CELL * S;
     for (const e of mgr.entities) {
       if (!(e instanceof Monster) || e.dead) continue;
-      const sx = this.viewX + e.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + e.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + e.wx * S - this.cameraX;
+      const sy = this.viewY + e.wy * S - this.cameraY;
       const key = Assets.monsterSheetKey(e.monType, e.theme || 0);
       const img = Assets.img[key];
       if (img) {
@@ -238,10 +242,10 @@ export class Render {
           ? [0,0,1,1,2,2,3,3][dir] ?? 0
           : Math.min(rows - 1, dir);
         const col  = Math.min(cols - 1, e.animFrame | 0);
-        ctx.drawImage(img, col * SPRPX, row * SPRPX, SPRPX, SPRPX, sx, sy, sprite, sprite);
+        ctx.drawImage(img, col * SPRPX, row * SPRPX, SPRPX, SPRPX, sx, sy, C, C);
       } else {
         ctx.fillStyle = "#a44";
-        ctx.fillRect(sx, sy, sprite, sprite);
+        ctx.fillRect(sx, sy, C, C);
       }
     }
   }
@@ -299,24 +303,26 @@ export class Render {
 
   _drawPlayers(players) {
     const ctx = this.ctx;
-    const S = this.scale, sprite = SPRPX * S;
+    // 24x24 source rendered into a 16x16 cell so the player sprite never
+    // visually overlaps adjacent wall tiles.
+    const S = this.scale, C = CELL * S;
     for (const p of players) {
       if (!p.joined || p.dead) continue;
-      const sx = this.viewX + p.wx * S - this.cameraX - ((SPRPX - CELL) / 2) * S;
-      const sy = this.viewY + p.wy * S - this.cameraY - ((SPRPX - CELL) / 2) * S;
+      const sx = this.viewX + p.wx * S - this.cameraX;
+      const sy = this.viewY + p.wy * S - this.cameraY;
       const img = Assets.img[p.hero.id];
       if (img) {
         const row = Math.min(p.hero.frameRows - 1, p.dir | 0);
         const col = Math.min(p.hero.frameCols - 1, p.animFrame | 0);
         const sz  = p.hero.frameSize;
-        ctx.drawImage(img, col * sz, row * sz, sz, sz, sx, sy, sprite, sprite);
+        ctx.drawImage(img, col * sz, row * sz, sz, sz, sx, sy, C, C);
       } else {
         ctx.fillStyle = p.hero.color;
-        ctx.fillRect(sx, sy, sprite, sprite);
+        ctx.fillRect(sx, sy, C, C);
       }
       if (p.invuln > 0 && Math.floor(performance.now() / 60) % 2) {
         ctx.fillStyle = "rgba(255,255,255,0.35)";
-        ctx.fillRect(sx, sy, sprite, sprite);
+        ctx.fillRect(sx, sy, C, C);
       }
     }
   }
