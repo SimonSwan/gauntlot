@@ -72,14 +72,21 @@ function decodeTile(region, n) {
 //   bit11..8  = R, bit7..4 = G, bit3..0 = B
 //   Each colour component c is c<<4 | c (so 4-bit -> 8-bit).
 //   The 'I' bias is a bit subtle; for raw RGB approximation we just expand.
-// We use the simple expand (i<<4 | i) and ignore the high nibble for now —
-// gauntlet's palette RAM nibble 0..3 is the actual visible colour data.
+// MAME's IRGB_4444 decoder (src/emu/dipalette.cpp raw_to_rgb_converter):
+//   I = high nibble (bits 15..12), R/G/B nibbles in 11..0.
+//   each output channel = pal4bit(channel_nib * I / 15)
+//   where pal4bit(x) = (x << 4) | x.
+// Intensity 0 -> black; intensity 15 -> straight nibble expand.
+// Ignoring I is what gave us the "wrong, washed out / too bright" gates and
+// walls; this matches MAME exactly.
 function irgb4444ToRgb(word) {
-  // bits 11..8 = R, 7..4 = G, 3..0 = B; bits 15..12 are an intensity tweak
-  const r4 = (word >> 8) & 0xf;
-  const g4 = (word >> 4) & 0xf;
-  const b4 =  word       & 0xf;
-  // 4-bit -> 8-bit expand
+  const i  = (word >> 12) & 0xf;
+  const rN = (word >>  8) & 0xf;
+  const gN = (word >>  4) & 0xf;
+  const bN =  word        & 0xf;
+  const r4 = Math.floor(rN * i / 15);
+  const g4 = Math.floor(gN * i / 15);
+  const b4 = Math.floor(bN * i / 15);
   return [
     (r4 << 4) | r4,
     (g4 << 4) | g4,

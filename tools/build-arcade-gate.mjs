@@ -79,10 +79,17 @@ function decodeTile(region, n) {
   return out;
 }
 
+// MAME's IRGB_4444 decoder.  Top nibble is intensity; output channel =
+// pal4bit(nibble * intensity / 15).  Ignoring intensity gave us washed-out
+// palettes; this matches MAME's emu/dipalette.cpp exactly.
 function irgb4444ToRgb(word) {
-  const r4 = (word >> 8) & 0xf;
-  const g4 = (word >> 4) & 0xf;
-  const b4 =  word       & 0xf;
+  const i  = (word >> 12) & 0xf;
+  const rN = (word >>  8) & 0xf;
+  const gN = (word >>  4) & 0xf;
+  const bN =  word        & 0xf;
+  const r4 = Math.floor(rN * i / 15);
+  const g4 = Math.floor(gN * i / 15);
+  const b4 = Math.floor(bN * i / 15);
   return [ (r4<<4)|r4, (g4<<4)|g4, (b4<<4)|b4 ];
 }
 
@@ -96,15 +103,15 @@ function loadPalette(palBin) {
   return out;
 }
 
-// Render a multi-tile sprite block, atari_motion_objects column-major layout.
-// `code` is the top-left tile; widthTiles/heightTiles give the block size.
+// Render a multi-tile sprite block.  atari_motion_objects (atarimo.cpp)
+// walks the block ROW-major: code+0 = (0,0), code+1 = (1,0), then code+w =
+// (0,1).  My earlier column-major guess produced jumbled gates that looked
+// like little faces instead of chain links.
 function renderSprite(region, palette, palBase, code, widthTiles, heightTiles) {
   const png = new PNG({ width: widthTiles*8, height: heightTiles*8 });
-  // Column-major: iterate columns, within each column iterate rows.
-  // tile(col, row) = code + col*heightTiles + row.
-  for (let col = 0; col < widthTiles; col++) {
-    for (let row = 0; row < heightTiles; row++) {
-      const tileCode = code + col*heightTiles + row;
+  for (let row = 0; row < heightTiles; row++) {
+    for (let col = 0; col < widthTiles; col++) {
+      const tileCode = code + row*widthTiles + col;
       const tile = decodeTile(region, tileCode);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const v = tile[y*8 + x];
