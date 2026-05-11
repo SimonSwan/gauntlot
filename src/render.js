@@ -19,7 +19,13 @@ import { Monster, Generator, Projectile, Item, Fx } from "./entities.js";
 
 const CELL  = 16;     // world px per tile
 const SPRPX = 24;     // sprite frame size in world px
-const HUD_W = 96;     // HUD column width in screen px (constant — independent of scale)
+
+// Reference layout (per jakesgordon/javascript-gauntlet):
+//   canvas split 75% playfield / 25% scoreboard.
+//   playfield is a SCROLLING viewport of VIEW_TILES x VIEW_TILES (24, not 32).
+//   The camera follows the focused player; the maze is larger than the view.
+const VIEW_TILES = 24;
+const HUD_FRACT  = 0.25;   // HUD is 25% of canvas width
 
 export class Render {
   constructor(canvas) {
@@ -33,18 +39,22 @@ export class Render {
   _layout() {
     const W = this.canvas.width;
     const H = this.canvas.height;
-    // Fit the full 32x32 level into the available area to the left of the HUD.
-    const availW = Math.max(1, W - HUD_W);
-    const scaleX = availW / (32 * CELL);
-    const scaleY = H      / (32 * CELL);
-    // Allow a non-integer scale so the playfield always fills the available area.
-    // Sprites still look crisp thanks to imageSmoothingEnabled=false.
-    this.scale = Math.max(0.5, Math.min(scaleX, scaleY));
-    this.viewW = Math.floor(32 * CELL * this.scale);
-    this.viewH = Math.floor(32 * CELL * this.scale);
+    // Reserve a quarter of the canvas for the scoreboard column.
+    const hudW   = Math.max(140, Math.floor(W * HUD_FRACT));
+    const availW = Math.max(1, W - hudW);
+    // Pick an integer scale that fits VIEW_TILES x VIEW_TILES into the
+    // available area; integer keeps sprites crisp.
+    const sx = Math.floor(availW / (VIEW_TILES * CELL));
+    const sy = Math.floor(H      / (VIEW_TILES * CELL));
+    this.scale = Math.max(1, Math.min(sx, sy));
+    this.viewW = VIEW_TILES * CELL * this.scale;
+    this.viewH = VIEW_TILES * CELL * this.scale;
     this.viewX = Math.floor((availW - this.viewW) / 2);
     this.viewY = Math.floor((H      - this.viewH) / 2);
-    this.hudX  = W - HUD_W;
+    this.hudX  = availW;     // HUD starts where the playfield ends
+    this.hudW  = W - this.hudX;
+    // Approx font sizes scaled to HUD width.
+    this.hudFontPx = Math.max(12, Math.floor(this.hudW / 12));
   }
 
   // ── World rendering ─────────────────────────────────────────────────────────
@@ -64,9 +74,10 @@ export class Render {
     // Camera target: place focus at the centre of the viewport
     let camX = cx * this.scale - this.viewW / 2;
     let camY = cy * this.scale - this.viewH / 2;
-    // Clamp to level bounds so we never show outside the 32x32 grid
-    camX = Math.max(0, Math.min(camX, 32 * CELL * this.scale - this.viewW));
-    camY = Math.max(0, Math.min(camY, 32 * CELL * this.scale - this.viewH));
+    // Clamp camera so the viewport never shows beyond the 32-tile maze edges.
+    const mazePx = 32 * CELL * this.scale;
+    camX = Math.max(0, Math.min(camX, mazePx - this.viewW));
+    camY = Math.max(0, Math.min(camY, mazePx - this.viewH));
     this.cameraX = camX | 0;
     this.cameraY = camY | 0;
 
@@ -334,30 +345,37 @@ export class Render {
   // ── HUD ─────────────────────────────────────────────────────────────────────
   _drawHud(players, level, frame) {
     const ctx = this.ctx;
-    const x = this.hudX, w = HUD_W, h = this.canvas.height;
+    const x = this.hudX, w = this.hudW, h = this.canvas.height;
+    const fp = this.hudFontPx;
     ctx.fillStyle = "#000";
     ctx.fillRect(x, 0, w, h);
 
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 14px monospace";
     ctx.textAlign = "center";
-    ctx.fillText("GAUNTLET", x + w/2, 18);
+    const pad = Math.max(8, fp);
+    let yy = pad + fp;
 
-    ctx.font = "10px monospace";
-    ctx.fillText(`LEVEL ${(level?.index ?? 0) + 1}`, x + w/2, 36);
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.floor(fp * 1.6)}px monospace`;
+    ctx.fillText("GAUNTLET", x + w/2, yy);
+    yy += fp * 1.6;
 
-    let yy = 56;
+    ctx.font = `${fp}px monospace`;
+    ctx.fillText(`LEVEL ${(level?.index ?? 0) + 1}`, x + w/2, yy);
+    yy += fp * 2;
+
+    // Per-player panel.  Spread evenly across the remaining height.
+    const panelH = (h - yy - pad) / players.length;
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
+      const py = yy + i * panelH;
       ctx.fillStyle = p.hero.color;
-      ctx.font = "bold 10px monospace";
-      ctx.fillText(p.hero.id.toUpperCase(), x + w/2, yy);
+      ctx.font = `bold ${Math.floor(fp * 1.25)}px monospace`;
+      ctx.fillText(p.hero.id.toUpperCase(), x + w/2, py + fp);
       ctx.fillStyle = p.joined ? "#fff" : "#666";
-      ctx.font = "9px monospace";
-      ctx.fillText(`HP ${Math.max(0, p.hp|0)}`, x + w/2, yy + 12);
-      ctx.fillText(`${(p.score|0).toString().padStart(6,"0")}`, x + w/2, yy + 22);
-      ctx.fillText(`K${p.keys} P${p.potions}`, x + w/2, yy + 32);
-      yy += 56;
+      ctx.font = `${fp}px monospace`;
+      ctx.fillText(`HP ${Math.max(0, p.hp|0)}`, x + w/2, py + fp * 2.4);
+      ctx.fillText(`${(p.score|0).toString().padStart(6,"0")}`, x + w/2, py + fp * 3.6);
+      ctx.fillText(`K${p.keys}  P${p.potions}`, x + w/2, py + fp * 4.8);
     }
   }
 }
