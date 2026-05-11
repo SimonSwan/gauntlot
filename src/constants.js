@@ -632,24 +632,28 @@ export const SCORE = Object.freeze({
 // 8 directions, 0 = South (facing toward player at screen start).
 // This maps to sprite sheet row ordering (HYPOTHESIS based on arcade convention).
 
-// CONFIRMED by visual inspection of warrior/grunt/ghost/demon sprite sheets:
-// rows are CLOCKWISE starting from South — S, SE, E, NE, N, NW, W, SW.
+// Sprite-sheet row order — CLOCKWISE FROM NORTH per the user's direct
+// inspection of player-warrior-sprite-sheet.png:
+//   row 0 = N (moving UP, axe held up)
+//   row 2 = E (moving RIGHT, right-facing profile)
+//   row 4 = S (moving DOWN, facing toward viewer)
+//   row 6 = W (moving LEFT, left-facing profile)
+// All other sheets (players + monsters) use the same row order.
 export const DIR = Object.freeze({
-  S:  0, SE: 1, E:  2, NE: 3,
-  N:  4, NW: 5, W:  6, SW: 7,
+  N:  0, NE: 1, E:  2, SE: 3,
+  S:  4, SW: 5, W:  6, NW: 7,
 });
 
-// Direction → velocity vector (normalised to ±1).  Index must match DIR.*
-// values above (same clockwise order).
+// Direction → velocity vector (normalised ±1).  Index = DIR.* value.
 export const DIR_VEC = [
-  { dx:  0, dy:  1 },  // 0 S
-  { dx:  1, dy:  1 },  // 1 SE
-  { dx:  1, dy:  0 },  // 2 E
-  { dx:  1, dy: -1 },  // 3 NE
-  { dx:  0, dy: -1 },  // 4 N
-  { dx: -1, dy: -1 },  // 5 NW
-  { dx: -1, dy:  0 },  // 6 W
-  { dx: -1, dy:  1 },  // 7 SW
+  { dx:  0, dy: -1 },  // 0 N  (up)
+  { dx:  1, dy: -1 },  // 1 NE
+  { dx:  1, dy:  0 },  // 2 E  (right)
+  { dx:  1, dy:  1 },  // 3 SE
+  { dx:  0, dy:  1 },  // 4 S  (down)
+  { dx: -1, dy:  1 },  // 5 SW
+  { dx: -1, dy:  0 },  // 6 W  (left)
+  { dx: -1, dy: -1 },  // 7 NW
 ];
 
 // 4 cardinal directions for player movement
