@@ -344,21 +344,28 @@ function decodeLevel(cpu, levelPtr) {
   // RLE encoding: alternating (code_byte, count_byte) pairs
   // code_byte selects which of P0–P3 to use: bits 6–7 = param index
   // count_byte = run length
-  // Grid filled row-major until 32×32 = 1024 cells
+  // Grid filled COLUMN-MAJOR (the ROM stores the maze a column at a time —
+  // verified by comparing the decoded geometry of maze1 to gex's render of
+  // maze001.png, which shows three vertical corridors).
   const grid = new Uint8Array(LEVEL_GRID_SIZE);
-  let pos  = base + 14;
-  let cell = 0;
+  let pos    = base + 14;
+  let cell   = 0;        // logical position within the body stream
 
   while (cell < LEVEL_GRID_SIZE) {
     const codeByte  = cpu[pos++];
     const countByte = cpu[pos++];
-    // Upper 2 bits of codeByte select param index (0–3)
     const paramIdx  = (codeByte >> 6) & 0x03;
     const tileCode  = params[paramIdx];
     const count     = (countByte === 0) ? 256 : countByte;
 
     for (let i = 0; i < count && cell < LEVEL_GRID_SIZE; i++) {
-      grid[cell++] = tileCode;
+      // Convert column-major write order to a row-major grid index so the
+      // rest of the pipeline (PNG output, level.js classifier) can keep
+      // assuming row-major addressing.
+      const col = (cell / 32) | 0;
+      const row = cell - col * 32;
+      grid[row * 32 + col] = tileCode;
+      cell++;
     }
   }
 
