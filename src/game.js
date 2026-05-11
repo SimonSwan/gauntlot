@@ -259,13 +259,9 @@ export class Game {
   }
 
   _beginRun() {
+    // ROM levels are at the head of LevelLoader.levels, so index 0 is the
+    // real ROM Level 1 (level-001.png).
     this.levelIdx = 0;
-    // Prefer ROM levels (skip the 17 trainer slots whose files don't exist).
-    // Index 17 is level-001.png — the garbage $0003 entry from the pointer
-    // table — so start at 18 (the real maze001 at ROM ptr $833d).
-    if (Assets.levelManifest && Assets.levelManifest.levels?.length) {
-      this.levelIdx = 18;
-    }
     this._loadLevel(this.levelIdx);
   }
 

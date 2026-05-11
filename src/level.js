@@ -371,9 +371,22 @@ export const LevelLoader = {
   init(basePath, romManifest) {
     this.levels = [];
 
-    // ── Trainer / hand-crafted levels ─────────────────────────────────────
-    // These are the 17 levels from javascript-gauntlet (7 trainers + 10 dungeons).
-    // They use the same PNG format and load without modification.
+    // ── ROM-decoded levels (the real game) ────────────────────────────────
+    // 127 levels decoded directly from Gauntlet Rev 14 ROM binary.
+    // Index 0 = level-001.png = real ROM Level 1.
+    if (romManifest && romManifest.levels) {
+      for (const entry of romManifest.levels) {
+        const url = `${basePath}mazes/rom/${entry.file}`;
+        const idx = this.levels.length;
+        this.levels.push(new Level(idx, url, 'rom-decoded'));
+      }
+    } else {
+      console.warn('[LevelLoader] No ROM levels available.  Run tools/rom-decoder.mjs.');
+    }
+
+    // ── Trainer / hand-crafted levels (legacy fallback) ───────────────────
+    // Kept on the tail of the playlist so an unlikely 127-level run still
+    // lands somewhere; not reached in normal play.
     const TRAINER_LEVELS = [
       'trainer-1.png', 'trainer-2.png', 'trainer-3.png',
       'trainer-4.png', 'trainer-5.png', 'trainer-6.png', 'trainer-7.png',
@@ -386,26 +399,6 @@ export const LevelLoader = {
       const url = `${basePath}mazes/${file}`;
       const idx = this.levels.length;
       this.levels.push(new Level(idx, url, 'handcrafted'));
-    }
-
-    // ── ROM-decoded levels ─────────────────────────────────────────────────
-    // 125 levels decoded directly from Gauntlet Rev 14 ROM binary.
-    // Require running: node tools/rom-decoder.mjs <rom-dir>
-    // MUCH more accurate than the gex image-analysis approach:
-    //   - Exact tile codes from C534 lookup table (no colour-analysis guessing)
-    //   - Correct gate/wall distinction (gex frequently confuses these)
-    //   - 25 more levels than the gex-based set
-    //   - Correct entity positions confirmed by VIS inspection
-
-    if (romManifest && romManifest.levels) {
-      console.log(`[LevelLoader] Adding ${romManifest.levels.length} ROM-decoded levels`);
-      for (const entry of romManifest.levels) {
-        const url = `${basePath}mazes/rom/${entry.file}`;
-        const idx = this.levels.length;
-        this.levels.push(new Level(idx, url, 'rom-decoded'));
-      }
-    } else {
-      console.warn('[LevelLoader] No ROM levels available.  Run tools/rom-decoder.mjs.');
     }
 
     console.log(`[LevelLoader] Total levels: ${this.levels.length}`);
