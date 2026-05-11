@@ -1,533 +1,1548 @@
 {
-  "source": "rom-decoder.mjs — direct ROM decode (byte-accurate)",
-  "rom": "Gauntlet (1985) Atari Rev 14 — MAME gauntlet.zip",
+  "_info": "Byte-accurate decode of Gauntlet Rev 14 ROM. All levels hit final_pos=1024.",
+  "source": "Gauntlet (1985) Atari Rev 14 MAME ROM set",
   "count": 127,
-  "confirmed_entities": [
-    "$03 horizontal gate (row21 col15 Level 1)",
-    "$04 vertical gate (row31 col9 Level 1)",
-    "$05 player spawn",
-    "$06 exit, $07 exit-to-4, $08 exit-to-8",
-    "$09 ghost enemy sprite",
-    "$19 ghost generator L1 (row27 col8 Level 1)",
-    "$1A ghost generator L2 (row31 col17 Level 1)",
-    "$28 treasure chest (row2 col10 Level 1)",
-    "$2B food turkey (row26 col31 Level 1)",
-    "$2C magic potion (row1 col5 Level 1)",
-    "$35 key (row31 col3 Level 1)"
+  "confirmed": [
+    "$03 H-gate  \u2014 Level1 row21 col15 CONFIRMED",
+    "$04 V-gate  \u2014 Level1 row31 col9  CONFIRMED",
+    "$05 spawn   \u2014 CONFIRMED",
+    "$06 exit    \u2014 Level1 row31 col1  CONFIRMED",
+    "$07 warp-4  \u2014 Level1 row31 col31 CONFIRMED",
+    "$08 warp-8  \u2014 Level1 row1  col31 CONFIRMED",
+    "$19 ghostG  \u2014 Level1 row27 col8  CONFIRMED",
+    "$1A ghostG  \u2014 Level1 row31 col17 CONFIRMED",
+    "$28 chest   \u2014 Level1 row2  col10 CONFIRMED",
+    "$2B turkey  \u2014 Level1 row26 col31 CONFIRMED",
+    "$2C potion  \u2014 Level1 row1  col5  CONFIRMED",
+    "$35 key     \u2014 Level1 row31 col3  CONFIRMED"
   ],
-  "placeholder_entities": [
-    "$0C-$0E $0F-$11 $12-$14 $15-$17 $1C-$27 $2A — generator type unconfirmed",
-    "$18 — entity type unconfirmed",
-    "$2D invisibility — single placement per 9 levels, not confirmed"
+  "placeholder": [
+    "$0C-$27 $2A generator types unconfirmed from ROM descriptor"
   ],
   "levels": [
     {
       "file": "level-001.png",
-      "ptr": "$82de"
+      "romIndex": 0,
+      "ptr": "$0382DE",
+      "magic": "edz",
+      "params": [
+        "$0B",
+        "$5A",
+        "$5B",
+        "$49"
+      ]
     },
     {
       "file": "level-002.png",
-      "ptr": "$833d"
+      "romIndex": 1,
+      "ptr": "$03833D",
+      "magic": "edz",
+      "params": [
+        "$09",
+        "$A8",
+        "$59",
+        "$5A"
+      ]
     },
     {
       "file": "level-003.png",
-      "ptr": "$839f"
+      "romIndex": 2,
+      "ptr": "$03839F",
+      "magic": "edz",
+      "params": [
+        "$59",
+        "$5A",
+        "$04",
+        "$68"
+      ]
     },
     {
       "file": "level-004.png",
-      "ptr": "$8403"
+      "romIndex": 3,
+      "ptr": "$038403",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$5E",
+        "$5B",
+        "$5A"
+      ]
     },
     {
       "file": "level-005.png",
-      "ptr": "$8495"
+      "romIndex": 4,
+      "ptr": "$038495",
+      "magic": "edz",
+      "params": [
+        "$4F",
+        "$5F",
+        "$68",
+        "$6B"
+      ]
     },
     {
       "file": "level-006.png",
-      "ptr": "$8501"
+      "romIndex": 5,
+      "ptr": "$038501",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$5A",
+        "$A5",
+        "$66"
+      ]
     },
     {
       "file": "level-007.png",
-      "ptr": "$8571"
+      "romIndex": 6,
+      "ptr": "$038571",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$59",
+        "$5A",
+        "$5B"
+      ]
     },
     {
       "file": "level-008.png",
-      "ptr": "$85ce"
+      "romIndex": 7,
+      "ptr": "$0385CE",
+      "magic": "cle",
+      "params": [
+        "$D1",
+        "$5D",
+        "$04",
+        "$68"
+      ]
     },
     {
       "file": "level-009.png",
-      "ptr": "$868c"
+      "romIndex": 8,
+      "ptr": "$03868C",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$7B",
+        "$98",
+        "$4A"
+      ]
     },
     {
       "file": "level-010.png",
-      "ptr": "$8797"
+      "romIndex": 9,
+      "ptr": "$038797",
+      "magic": "cle",
+      "params": [
+        "$5B",
+        "$75",
+        "$17",
+        "$8B"
+      ]
     },
     {
       "file": "level-011.png",
-      "ptr": "$8915"
+      "romIndex": 10,
+      "ptr": "$038915",
+      "magic": "cle",
+      "params": [
+        "$78",
+        "$B5",
+        "$28",
+        "$43"
+      ]
     },
     {
       "file": "level-012.png",
-      "ptr": "$8abe"
+      "romIndex": 11,
+      "ptr": "$038ABE",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$4B",
+        "$39",
+        "$6A"
+      ]
     },
     {
       "file": "level-013.png",
-      "ptr": "$8ba0"
+      "romIndex": 12,
+      "ptr": "$038BA0",
+      "magic": "aaa",
+      "params": [
+        "$68",
+        "$5B",
+        "$39",
+        "$BB"
+      ]
     },
     {
       "file": "level-014.png",
-      "ptr": "$8ce6"
+      "romIndex": 13,
+      "ptr": "$038CE6",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$51",
+        "$4B",
+        "$58"
+      ]
     },
     {
       "file": "level-015.png",
-      "ptr": "$8dba"
+      "romIndex": 14,
+      "ptr": "$038DBA",
+      "magic": "cle",
+      "params": [
+        "$5B",
+        "$75",
+        "$17",
+        "$04"
+      ]
     },
     {
       "file": "level-016.png",
-      "ptr": "$8f36"
+      "romIndex": 15,
+      "ptr": "$038F36",
+      "magic": "cle",
+      "params": [
+        "$03",
+        "$4E",
+        "$04",
+        "$49"
+      ]
     },
     {
       "file": "level-017.png",
-      "ptr": "$90b9"
+      "romIndex": 16,
+      "ptr": "$0390B9",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$D1",
+        "$5B",
+        "$4E"
+      ]
     },
     {
       "file": "level-018.png",
-      "ptr": "$923c"
+      "romIndex": 17,
+      "ptr": "$03923C",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$9E",
+        "$09",
+        "$84"
+      ]
     },
     {
       "file": "level-019.png",
-      "ptr": "$9373"
+      "romIndex": 18,
+      "ptr": "$039373",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$64",
+        "$5B",
+        "$9A"
+      ]
     },
     {
       "file": "level-020.png",
-      "ptr": "$9423"
+      "romIndex": 19,
+      "ptr": "$039423",
+      "magic": "cle",
+      "params": [
+        "$11",
+        "$0B",
+        "$68",
+        "$A1"
+      ]
     },
     {
       "file": "level-021.png",
-      "ptr": "$950d"
+      "romIndex": 20,
+      "ptr": "$03950D",
+      "magic": "cle",
+      "params": [
+        "$4B",
+        "$68",
+        "$0D",
+        "$06"
+      ]
     },
     {
       "file": "level-022.png",
-      "ptr": "$9664"
+      "romIndex": 21,
+      "ptr": "$039664",
+      "magic": "cle",
+      "params": [
+        "$5B",
+        "$68",
+        "$17",
+        "$75"
+      ]
     },
     {
       "file": "level-023.png",
-      "ptr": "$97e6"
+      "romIndex": 22,
+      "ptr": "$0397E6",
+      "magic": "cle",
+      "params": [
+        "$0B",
+        "$D4",
+        "$75",
+        "$44"
+      ]
     },
     {
       "file": "level-024.png",
-      "ptr": "$98b0"
+      "romIndex": 23,
+      "ptr": "$0398B0",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$5B",
+        "$0B",
+        "$59"
+      ]
     },
     {
       "file": "level-025.png",
-      "ptr": "$999c"
+      "romIndex": 24,
+      "ptr": "$03999C",
+      "magic": "cle",
+      "params": [
+        "$49",
+        "$5A",
+        "$04",
+        "$A8"
+      ]
     },
     {
       "file": "level-026.png",
-      "ptr": "$9ae4"
+      "romIndex": 25,
+      "ptr": "$039AE4",
+      "magic": "cle",
+      "params": [
+        "$0E",
+        "$5E",
+        "$68",
+        "$54"
+      ]
     },
     {
       "file": "level-027.png",
-      "ptr": "$9bf6"
+      "romIndex": 26,
+      "ptr": "$039BF6",
+      "magic": "cle",
+      "params": [
+        "$03",
+        "$51",
+        "$04",
+        "$61"
+      ]
     },
     {
       "file": "level-028.png",
-      "ptr": "$9d26"
+      "romIndex": 27,
+      "ptr": "$039D26",
+      "magic": "cle",
+      "params": [
+        "$0C",
+        "$68",
+        "$0B",
+        "$5B"
+      ]
     },
     {
       "file": "level-029.png",
-      "ptr": "$9e32"
+      "romIndex": 28,
+      "ptr": "$039E32",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$5B",
+        "$0C",
+        "$0B"
+      ]
     },
     {
       "file": "level-030.png",
-      "ptr": "$a000"
+      "romIndex": 29,
+      "ptr": "$03A000",
+      "magic": "cle",
+      "params": [
+        "$11",
+        "$0B",
+        "$17",
+        "$68"
+      ]
     },
     {
       "file": "level-031.png",
-      "ptr": "$a18f"
+      "romIndex": 30,
+      "ptr": "$03A18F",
+      "magic": "cle",
+      "params": [
+        "$5B",
+        "$68",
+        "$17",
+        "$8B"
+      ]
     },
     {
       "file": "level-032.png",
-      "ptr": "$d972"
+      "romIndex": 31,
+      "ptr": "$03D972",
+      "magic": "edz",
+      "params": [
+        "$4B",
+        "$68",
+        "$5E",
+        "$61"
+      ]
     },
     {
       "file": "level-033.png",
-      "ptr": "$da7c"
+      "romIndex": 32,
+      "ptr": "$03DA7C",
+      "magic": "cle",
+      "params": [
+        "$03",
+        "$78",
+        "$68",
+        "$7B"
+      ]
     },
     {
       "file": "level-034.png",
-      "ptr": "$dc15"
+      "romIndex": 33,
+      "ptr": "$03DC15",
+      "magic": "cle",
+      "params": [
+        "$58",
+        "$68",
+        "$39",
+        "$B5"
+      ]
     },
     {
       "file": "level-035.png",
-      "ptr": "$dcbd"
+      "romIndex": 34,
+      "ptr": "$03DCBD",
+      "magic": "edz",
+      "params": [
+        "$78",
+        "$5A",
+        "$5E",
+        "$5D"
+      ]
     },
     {
       "file": "level-036.png",
-      "ptr": "$de4b"
+      "romIndex": 35,
+      "ptr": "$03DE4B",
+      "magic": "cle",
+      "params": [
+        "$0B",
+        "$A8",
+        "$39",
+        "$5D"
+      ]
     },
     {
       "file": "level-037.png",
-      "ptr": "$a30d"
+      "romIndex": 36,
+      "ptr": "$03A30D",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$5B",
+        "$D0",
+        "$61"
+      ]
     },
     {
       "file": "level-038.png",
-      "ptr": "$a46f"
+      "romIndex": 37,
+      "ptr": "$03A46F",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$B5",
+        "$04",
+        "$0E"
+      ]
     },
     {
       "file": "level-039.png",
-      "ptr": "$a5f0"
+      "romIndex": 38,
+      "ptr": "$03A5F0",
+      "magic": "cle",
+      "params": [
+        "$0B",
+        "$51",
+        "$28",
+        "$60"
+      ]
     },
     {
       "file": "level-040.png",
-      "ptr": "$a73e"
+      "romIndex": 39,
+      "ptr": "$03A73E",
+      "magic": "cle",
+      "params": [
+        "$A1",
+        "$68",
+        "$0E",
+        "$B5"
+      ]
     },
     {
       "file": "level-041.png",
-      "ptr": "$a8af"
+      "romIndex": 40,
+      "ptr": "$03A8AF",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$B5",
+        "$04",
+        "$43"
+      ]
     },
     {
       "file": "level-042.png",
-      "ptr": "$a9d6"
+      "romIndex": 41,
+      "ptr": "$03A9D6",
+      "magic": "cle",
+      "params": [
+        "$28",
+        "$62",
+        "$04",
+        "$1B"
+      ]
     },
     {
       "file": "level-043.png",
-      "ptr": "$aa83"
+      "romIndex": 42,
+      "ptr": "$03AA83",
+      "magic": "cle",
+      "params": [
+        "$03",
+        "$68",
+        "$04",
+        "$9B"
+      ]
     },
     {
       "file": "level-044.png",
-      "ptr": "$ab7e"
+      "romIndex": 43,
+      "ptr": "$03AB7E",
+      "magic": "edz",
+      "params": [
+        "$0B",
+        "$A8",
+        "$4A",
+        "$75"
+      ]
     },
     {
       "file": "level-045.png",
-      "ptr": "$ac23"
+      "romIndex": 44,
+      "ptr": "$03AC23",
+      "magic": "cle",
+      "params": [
+        "$5B",
+        "$68",
+        "$17",
+        "$75"
+      ]
     },
     {
       "file": "level-046.png",
-      "ptr": "$ada5"
+      "romIndex": 45,
+      "ptr": "$03ADA5",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$5A",
+        "$06",
+        "$60"
+      ]
     },
     {
       "file": "level-047.png",
-      "ptr": "$ae8d"
+      "romIndex": 46,
+      "ptr": "$03AE8D",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$68",
+        "$04",
+        "$9A"
+      ]
     },
     {
       "file": "level-048.png",
-      "ptr": "$afbd"
+      "romIndex": 47,
+      "ptr": "$03AFBD",
+      "magic": "edz",
+      "params": [
+        "$C3",
+        "$68",
+        "$04",
+        "$75"
+      ]
     },
     {
       "file": "level-049.png",
-      "ptr": "$b15c"
+      "romIndex": 48,
+      "ptr": "$03B15C",
+      "magic": "edz",
+      "params": [
+        "$0B",
+        "$5E",
+        "$04",
+        "$68"
+      ]
     },
     {
       "file": "level-050.png",
-      "ptr": "$b247"
+      "romIndex": 49,
+      "ptr": "$03B247",
+      "magic": "edz",
+      "params": [
+        "$5D",
+        "$5A",
+        "$28",
+        "$AA"
+      ]
     },
     {
       "file": "level-051.png",
-      "ptr": "$e000"
+      "romIndex": 50,
+      "ptr": "$03E000",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$59",
+        "$A0",
+        "$9A"
+      ]
     },
     {
       "file": "level-052.png",
-      "ptr": "$e10b"
+      "romIndex": 51,
+      "ptr": "$03E10B",
+      "magic": "edz",
+      "params": [
+        "$5D",
+        "$5A",
+        "$28",
+        "$6A"
+      ]
     },
     {
       "file": "level-053.png",
-      "ptr": "$e1b7"
+      "romIndex": 52,
+      "ptr": "$03E1B7",
+      "magic": "cle",
+      "params": [
+        "$B8",
+        "$51",
+        "$04",
+        "$59"
+      ]
     },
     {
       "file": "level-054.png",
-      "ptr": "$e317"
+      "romIndex": 53,
+      "ptr": "$03E317",
+      "magic": "cle",
+      "params": [
+        "$0D",
+        "$78",
+        "$5A",
+        "$A8"
+      ]
     },
     {
       "file": "level-055.png",
-      "ptr": "$e457"
+      "romIndex": 54,
+      "ptr": "$03E457",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$5B",
+        "$61",
+        "$9E"
+      ]
     },
     {
       "file": "level-056.png",
-      "ptr": "$e595"
+      "romIndex": 55,
+      "ptr": "$03E595",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$5B",
+        "$A1",
+        "$54"
+      ]
     },
     {
       "file": "level-057.png",
-      "ptr": "$b2eb"
+      "romIndex": 56,
+      "ptr": "$03B2EB",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$A7",
+        "$04",
+        "$9E"
+      ]
     },
     {
       "file": "level-058.png",
-      "ptr": "$b388"
+      "romIndex": 57,
+      "ptr": "$03B388",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$AA",
+        "$61",
+        "$65"
+      ]
     },
     {
       "file": "level-059.png",
-      "ptr": "$b433"
+      "romIndex": 58,
+      "ptr": "$03B433",
+      "magic": "edz",
+      "params": [
+        "$0E",
+        "$68",
+        "$6A",
+        "$9A"
+      ]
     },
     {
       "file": "level-060.png",
-      "ptr": "$b4ff"
+      "romIndex": 59,
+      "ptr": "$03B4FF",
+      "magic": "edz",
+      "params": [
+        "$0E",
+        "$4B",
+        "$11",
+        "$68"
+      ]
     },
     {
       "file": "level-061.png",
-      "ptr": "$b61e"
+      "romIndex": 60,
+      "ptr": "$03B61E",
+      "magic": "edz",
+      "params": [
+        "$11",
+        "$A0",
+        "$68",
+        "$5A"
+      ]
     },
     {
       "file": "level-062.png",
-      "ptr": "$b71c"
+      "romIndex": 61,
+      "ptr": "$03B71C",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$AA",
+        "$66",
+        "$5D"
+      ]
     },
     {
       "file": "level-063.png",
-      "ptr": "$b7bb"
+      "romIndex": 62,
+      "ptr": "$03B7BB",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$60",
+        "$D9",
+        "$5D"
+      ]
     },
     {
       "file": "level-064.png",
-      "ptr": "$b890"
+      "romIndex": 63,
+      "ptr": "$03B890",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$B5",
+        "$04",
+        "$68"
+      ]
     },
     {
       "file": "level-065.png",
-      "ptr": "$b991"
+      "romIndex": 64,
+      "ptr": "$03B991",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$66",
+        "$A0",
+        "$6A"
+      ]
     },
     {
       "file": "level-066.png",
-      "ptr": "$ba5e"
+      "romIndex": 65,
+      "ptr": "$03BA5E",
+      "magic": "edz",
+      "params": [
+        "$59",
+        "$A8",
+        "$5A",
+        "$6A"
+      ]
     },
     {
       "file": "level-067.png",
-      "ptr": "$bb4b"
+      "romIndex": 66,
+      "ptr": "$03BB4B",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$59",
+        "$6A",
+        "$58"
+      ]
     },
     {
       "file": "level-068.png",
-      "ptr": "$bbd9"
+      "romIndex": 67,
+      "ptr": "$03BBD9",
+      "magic": "edz",
+      "params": [
+        "$5D",
+        "$E0",
+        "$9A",
+        "$DF"
+      ]
     },
     {
       "file": "level-069.png",
-      "ptr": "$bce2"
+      "romIndex": 68,
+      "ptr": "$03BCE2",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$9F",
+        "$04",
+        "$0E"
+      ]
     },
     {
       "file": "level-070.png",
-      "ptr": "$bdc7"
+      "romIndex": 69,
+      "ptr": "$03BDC7",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$68",
+        "$04",
+        "$5D"
+      ]
     },
     {
       "file": "level-071.png",
-      "ptr": "$be7c"
+      "romIndex": 70,
+      "ptr": "$03BE7C",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$B5",
+        "$04",
+        "$16"
+      ]
     },
     {
       "file": "level-072.png",
-      "ptr": "$c000"
+      "romIndex": 71,
+      "ptr": "$03C000",
+      "magic": "cle",
+      "params": [
+        "$09",
+        "$0C",
+        "$15",
+        "$66"
+      ]
     },
     {
       "file": "level-073.png",
-      "ptr": "$e686"
+      "romIndex": 72,
+      "ptr": "$03E686",
+      "magic": "edz",
+      "params": [
+        "$0D",
+        "$68",
+        "$9C",
+        "$4E"
+      ]
     },
     {
       "file": "level-074.png",
-      "ptr": "$e770"
+      "romIndex": 73,
+      "ptr": "$03E770",
+      "magic": "cle",
+      "params": [
+        "$03",
+        "$51",
+        "$04",
+        "$39"
+      ]
     },
     {
       "file": "level-075.png",
-      "ptr": "$e8bb"
+      "romIndex": 74,
+      "ptr": "$03E8BB",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$94",
+        "$06",
+        "$93"
+      ]
     },
     {
       "file": "level-076.png",
-      "ptr": "$ea07"
+      "romIndex": 75,
+      "ptr": "$03EA07",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$CE",
+        "$11",
+        "$9B"
+      ]
     },
     {
       "file": "level-077.png",
-      "ptr": "$eb0a"
+      "romIndex": 76,
+      "ptr": "$03EB0A",
+      "magic": "cle",
+      "params": [
+        "$78",
+        "$A1",
+        "$39",
+        "$BA"
+      ]
     },
     {
       "file": "level-078.png",
-      "ptr": "$c107"
+      "romIndex": 77,
+      "ptr": "$03C107",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$5A",
+        "$04",
+        "$5D"
+      ]
     },
     {
       "file": "level-079.png",
-      "ptr": "$c1e7"
+      "romIndex": 78,
+      "ptr": "$03C1E7",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$67",
+        "$04",
+        "$66"
+      ]
     },
     {
       "file": "level-080.png",
-      "ptr": "$c2a2"
+      "romIndex": 79,
+      "ptr": "$03C2A2",
+      "magic": "edz",
+      "params": [
+        "$56",
+        "$68",
+        "$04",
+        "$0D"
+      ]
     },
     {
       "file": "level-081.png",
-      "ptr": "$c381"
+      "romIndex": 80,
+      "ptr": "$03C381",
+      "magic": "cle",
+      "params": [
+        "$B8",
+        "$DB",
+        "$68",
+        "$7B"
+      ]
     },
     {
       "file": "level-082.png",
-      "ptr": "$c4b8"
+      "romIndex": 81,
+      "ptr": "$03C4B8",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$D9",
+        "$A0",
+        "$A7"
+      ]
     },
     {
       "file": "level-083.png",
-      "ptr": "$c58d"
+      "romIndex": 82,
+      "ptr": "$03C58D",
+      "magic": "edz",
+      "params": [
+        "$0A",
+        "$A8",
+        "$61",
+        "$6A"
+      ]
     },
     {
       "file": "level-084.png",
-      "ptr": "$c66c"
+      "romIndex": 83,
+      "ptr": "$03C66C",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$51",
+        "$04",
+        "$AA"
+      ]
     },
     {
       "file": "level-085.png",
-      "ptr": "$c741"
+      "romIndex": 84,
+      "ptr": "$03C741",
+      "magic": "edz",
+      "params": [
+        "$59",
+        "$A8",
+        "$5D",
+        "$5A"
+      ]
     },
     {
       "file": "level-086.png",
-      "ptr": "$c842"
+      "romIndex": 85,
+      "ptr": "$03C842",
+      "magic": "edz",
+      "params": [
+        "$5A",
+        "$68",
+        "$1F",
+        "$D9"
+      ]
     },
     {
       "file": "level-087.png",
-      "ptr": "$c8fd"
+      "romIndex": 86,
+      "ptr": "$03C8FD",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$60",
+        "$5A",
+        "$9F"
+      ]
     },
     {
       "file": "level-088.png",
-      "ptr": "$c97c"
+      "romIndex": 87,
+      "ptr": "$03C97C",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$68",
+        "$04",
+        "$5B"
+      ]
     },
     {
       "file": "level-089.png",
-      "ptr": "$ca4d"
+      "romIndex": 88,
+      "ptr": "$03CA4D",
+      "magic": "edz",
+      "params": [
+        "$5A",
+        "$A8",
+        "$04",
+        "$09"
+      ]
     },
     {
       "file": "level-090.png",
-      "ptr": "$cb00"
+      "romIndex": 89,
+      "ptr": "$03CB00",
+      "magic": "edz",
+      "params": [
+        "$50",
+        "$5F",
+        "$06",
+        "$68"
+      ]
     },
     {
       "file": "level-091.png",
-      "ptr": "$cb82"
+      "romIndex": 90,
+      "ptr": "$03CB82",
+      "magic": "edz",
+      "params": [
+        "$5D",
+        "$5A",
+        "$0E",
+        "$68"
+      ]
     },
     {
       "file": "level-092.png",
-      "ptr": "$cc17"
+      "romIndex": 91,
+      "ptr": "$03CC17",
+      "magic": "edz",
+      "params": [
+        "$0A",
+        "$5A",
+        "$04",
+        "$0B"
+      ]
     },
     {
       "file": "level-093.png",
-      "ptr": "$cd19"
+      "romIndex": 92,
+      "ptr": "$03CD19",
+      "magic": "edz",
+      "params": [
+        "$59",
+        "$75",
+        "$C3",
+        "$44"
+      ]
     },
     {
       "file": "level-094.png",
-      "ptr": "$ecb8"
+      "romIndex": 93,
+      "ptr": "$03ECB8",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$61",
+        "$0B",
+        "$9E"
+      ]
     },
     {
       "file": "level-095.png",
-      "ptr": "$edc8"
+      "romIndex": 94,
+      "ptr": "$03EDC8",
+      "magic": "cle",
+      "params": [
+        "$68",
+        "$59",
+        "$91",
+        "$61"
+      ]
     },
     {
       "file": "level-096.png",
-      "ptr": "$eeb9"
+      "romIndex": 95,
+      "ptr": "$03EEB9",
+      "magic": "rez",
+      "params": [
+        "$7B",
+        "$4E",
+        "$39",
+        "$04"
+      ]
     },
     {
       "file": "level-097.png",
-      "ptr": "$efae"
+      "romIndex": 96,
+      "ptr": "$03EFAE",
+      "magic": "cle",
+      "params": [
+        "$4D",
+        "$5A",
+        "$39",
+        "$78"
+      ]
     },
     {
       "file": "level-098.png",
-      "ptr": "$f069"
+      "romIndex": 97,
+      "ptr": "$03F069",
+      "magic": "edz",
+      "params": [
+        "$B8",
+        "$5A",
+        "$C6",
+        "$5E"
+      ]
     },
     {
       "file": "level-099.png",
-      "ptr": "$f228"
+      "romIndex": 98,
+      "ptr": "$03F228",
+      "magic": "cle",
+      "params": [
+        "$0E",
+        "$A8",
+        "$39",
+        "$64"
+      ]
     },
     {
       "file": "level-100.png",
-      "ptr": "$ce30"
+      "romIndex": 99,
+      "ptr": "$03CE30",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$59",
+        "$04",
+        "$9A"
+      ]
     },
     {
       "file": "level-101.png",
-      "ptr": "$cee6"
+      "romIndex": 100,
+      "ptr": "$03CEE6",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$50",
+        "$60",
+        "$5F"
+      ]
     },
     {
       "file": "level-102.png",
-      "ptr": "$cf8d"
+      "romIndex": 101,
+      "ptr": "$03CF8D",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$5A",
+        "$04",
+        "$5D"
+      ]
     },
     {
       "file": "level-103.png",
-      "ptr": "$d054"
+      "romIndex": 102,
+      "ptr": "$03D054",
+      "magic": "edz",
+      "params": [
+        "$5A",
+        "$5B",
+        "$04",
+        "$68"
+      ]
     },
     {
       "file": "level-104.png",
-      "ptr": "$d110"
+      "romIndex": 103,
+      "ptr": "$03D110",
+      "magic": "edz",
+      "params": [
+        "$0E",
+        "$5E",
+        "$9B",
+        "$6A"
+      ]
     },
     {
       "file": "level-105.png",
-      "ptr": "$d202"
+      "romIndex": 104,
+      "ptr": "$03D202",
+      "magic": "edz",
+      "params": [
+        "$0E",
+        "$0D",
+        "$28",
+        "$5E"
+      ]
     },
     {
       "file": "level-106.png",
-      "ptr": "$d2ff"
+      "romIndex": 105,
+      "ptr": "$03D2FF",
+      "magic": "edz",
+      "params": [
+        "$9E",
+        "$6A",
+        "$0E",
+        "$04"
+      ]
     },
     {
       "file": "level-107.png",
-      "ptr": "$d3be"
+      "romIndex": 106,
+      "ptr": "$03D3BE",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$5A",
+        "$58",
+        "$5D"
+      ]
     },
     {
       "file": "level-108.png",
-      "ptr": "$d509"
+      "romIndex": 107,
+      "ptr": "$03D509",
+      "magic": "edz",
+      "params": [
+        "$5E",
+        "$AA",
+        "$04",
+        "$28"
+      ]
     },
     {
       "file": "level-109.png",
-      "ptr": "$d5a1"
+      "romIndex": 108,
+      "ptr": "$03D5A1",
+      "magic": "edz",
+      "params": [
+        "$0B",
+        "$5B",
+        "$5A",
+        "$A8"
+      ]
     },
     {
       "file": "level-110.png",
-      "ptr": "$d635"
+      "romIndex": 109,
+      "ptr": "$03D635",
+      "magic": "edz",
+      "params": [
+        "$03",
+        "$5E",
+        "$04",
+        "$5B"
+      ]
     },
     {
       "file": "level-111.png",
-      "ptr": "$d703"
+      "romIndex": 110,
+      "ptr": "$03D703",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$5E",
+        "$6B",
+        "$9D"
+      ]
     },
     {
       "file": "level-112.png",
-      "ptr": "$d7c6"
+      "romIndex": 111,
+      "ptr": "$03D7C6",
+      "magic": "edz",
+      "params": [
+        "$0B",
+        "$5A",
+        "$68",
+        "$6A"
+      ]
     },
     {
       "file": "level-113.png",
-      "ptr": "$d865"
+      "romIndex": 112,
+      "ptr": "$03D865",
+      "magic": "edz",
+      "params": [
+        "$59",
+        "$66",
+        "$A1",
+        "$68"
+      ]
     },
     {
       "file": "level-114.png",
-      "ptr": "$d90a"
+      "romIndex": 113,
+      "ptr": "$03D90A",
+      "magic": "edz",
+      "params": [
+        "$5C",
+        "$5E",
+        "$1A",
+        "$1D"
+      ]
     },
     {
       "file": "level-115.png",
-      "ptr": "$f2f5"
+      "romIndex": 150,
+      "ptr": "$03F2F5",
+      "magic": "edz",
+      "params": [
+        "$09",
+        "$03",
+        "$68",
+        "$6B"
+      ]
     },
     {
       "file": "level-116.png",
-      "ptr": "$f354"
+      "romIndex": 151,
+      "ptr": "$03F354",
+      "magic": "edz",
+      "params": [
+        "$45",
+        "$86",
+        "$49",
+        "$4A"
+      ]
     },
     {
       "file": "level-117.png",
-      "ptr": "$f3da"
+      "romIndex": 152,
+      "ptr": "$03F3DA",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$46",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-118.png",
-      "ptr": "$f476"
+      "romIndex": 153,
+      "ptr": "$03F476",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$46",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-119.png",
-      "ptr": "$f501"
+      "romIndex": 154,
+      "ptr": "$03F501",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$C6",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-120.png",
-      "ptr": "$f651"
+      "romIndex": 155,
+      "ptr": "$03F651",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$46",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-121.png",
-      "ptr": "$f6e3"
+      "romIndex": 156,
+      "ptr": "$03F6E3",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$86",
+        "$85",
+        "$00"
+      ]
     },
     {
       "file": "level-122.png",
-      "ptr": "$f810"
+      "romIndex": 157,
+      "ptr": "$03F810",
+      "magic": "cle",
+      "params": [
+        "$A8",
+        "$46",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-123.png",
-      "ptr": "$f93d"
+      "romIndex": 158,
+      "ptr": "$03F93D",
+      "magic": "edz",
+      "params": [
+        "$E8",
+        "$86",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-124.png",
-      "ptr": "$fa1f"
+      "romIndex": 159,
+      "ptr": "$03FA1F",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$46",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-125.png",
-      "ptr": "$fb1d"
+      "romIndex": 160,
+      "ptr": "$03FB1D",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$86",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-126.png",
-      "ptr": "$fbd5"
+      "romIndex": 161,
+      "ptr": "$03FBD5",
+      "magic": "edz",
+      "params": [
+        "$A8",
+        "$86",
+        "$45",
+        "$00"
+      ]
     },
     {
       "file": "level-127.png",
-      "ptr": "$fcba"
+      "romIndex": 162,
+      "ptr": "$03FCBA",
+      "magic": "edz",
+      "params": [
+        "$68",
+        "$46",
+        "$45",
+        "$00"
+      ]
     }
   ]
 }
