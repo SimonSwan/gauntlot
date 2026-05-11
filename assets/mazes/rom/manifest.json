@@ -1,7 +1,7 @@
 {
   "source": "rom-decoder.mjs — direct ROM decode (byte-accurate)",
   "rom": "Gauntlet (1985) Atari Rev 14 — MAME gauntlet.zip",
-  "count": 86,
+  "count": 127,
   "confirmed_entities": [
     "$03 horizontal gate (row21 col15 Level 1)",
     "$04 vertical gate (row31 col9 Level 1)",
@@ -23,347 +23,511 @@
   "levels": [
     {
       "file": "level-001.png",
-      "ptr": "$0003"
-    },
-    {
-      "file": "level-002.png",
       "ptr": "$82de"
     },
     {
-      "file": "level-003.png",
+      "file": "level-002.png",
       "ptr": "$833d"
     },
     {
-      "file": "level-004.png",
+      "file": "level-003.png",
       "ptr": "$839f"
     },
     {
-      "file": "level-005.png",
+      "file": "level-004.png",
       "ptr": "$8403"
     },
     {
-      "file": "level-006.png",
+      "file": "level-005.png",
       "ptr": "$8495"
     },
     {
-      "file": "level-007.png",
+      "file": "level-006.png",
       "ptr": "$8501"
     },
     {
-      "file": "level-008.png",
+      "file": "level-007.png",
       "ptr": "$8571"
     },
     {
-      "file": "level-009.png",
+      "file": "level-008.png",
       "ptr": "$85ce"
     },
     {
-      "file": "level-010.png",
+      "file": "level-009.png",
       "ptr": "$868c"
     },
     {
-      "file": "level-011.png",
+      "file": "level-010.png",
       "ptr": "$8797"
     },
     {
-      "file": "level-012.png",
+      "file": "level-011.png",
       "ptr": "$8915"
     },
     {
-      "file": "level-013.png",
+      "file": "level-012.png",
       "ptr": "$8abe"
     },
     {
-      "file": "level-014.png",
+      "file": "level-013.png",
       "ptr": "$8ba0"
     },
     {
-      "file": "level-015.png",
+      "file": "level-014.png",
       "ptr": "$8ce6"
     },
     {
-      "file": "level-016.png",
+      "file": "level-015.png",
       "ptr": "$8dba"
     },
     {
-      "file": "level-017.png",
+      "file": "level-016.png",
       "ptr": "$8f36"
     },
     {
-      "file": "level-018.png",
+      "file": "level-017.png",
       "ptr": "$90b9"
     },
     {
-      "file": "level-019.png",
+      "file": "level-018.png",
       "ptr": "$923c"
     },
     {
-      "file": "level-020.png",
+      "file": "level-019.png",
       "ptr": "$9373"
     },
     {
-      "file": "level-021.png",
+      "file": "level-020.png",
       "ptr": "$9423"
     },
     {
-      "file": "level-022.png",
+      "file": "level-021.png",
       "ptr": "$950d"
     },
     {
-      "file": "level-023.png",
+      "file": "level-022.png",
       "ptr": "$9664"
     },
     {
-      "file": "level-024.png",
+      "file": "level-023.png",
       "ptr": "$97e6"
     },
     {
-      "file": "level-025.png",
+      "file": "level-024.png",
       "ptr": "$98b0"
     },
     {
-      "file": "level-026.png",
+      "file": "level-025.png",
       "ptr": "$999c"
     },
     {
-      "file": "level-027.png",
+      "file": "level-026.png",
       "ptr": "$9ae4"
     },
     {
-      "file": "level-028.png",
+      "file": "level-027.png",
       "ptr": "$9bf6"
     },
     {
-      "file": "level-029.png",
+      "file": "level-028.png",
       "ptr": "$9d26"
     },
     {
-      "file": "level-030.png",
+      "file": "level-029.png",
       "ptr": "$9e32"
     },
     {
-      "file": "level-031.png",
+      "file": "level-030.png",
       "ptr": "$a000"
     },
     {
-      "file": "level-032.png",
+      "file": "level-031.png",
       "ptr": "$a18f"
     },
     {
-      "file": "level-033.png",
+      "file": "level-032.png",
       "ptr": "$d972"
     },
     {
-      "file": "level-034.png",
+      "file": "level-033.png",
       "ptr": "$da7c"
     },
     {
-      "file": "level-035.png",
+      "file": "level-034.png",
       "ptr": "$dc15"
     },
     {
-      "file": "level-036.png",
+      "file": "level-035.png",
       "ptr": "$dcbd"
     },
     {
-      "file": "level-037.png",
+      "file": "level-036.png",
       "ptr": "$de4b"
     },
     {
-      "file": "level-038.png",
+      "file": "level-037.png",
       "ptr": "$a30d"
     },
     {
-      "file": "level-039.png",
+      "file": "level-038.png",
       "ptr": "$a46f"
     },
     {
-      "file": "level-040.png",
+      "file": "level-039.png",
       "ptr": "$a5f0"
     },
     {
-      "file": "level-041.png",
+      "file": "level-040.png",
       "ptr": "$a73e"
     },
     {
-      "file": "level-042.png",
+      "file": "level-041.png",
       "ptr": "$a8af"
     },
     {
-      "file": "level-043.png",
+      "file": "level-042.png",
       "ptr": "$a9d6"
     },
     {
-      "file": "level-044.png",
+      "file": "level-043.png",
       "ptr": "$aa83"
     },
     {
-      "file": "level-045.png",
+      "file": "level-044.png",
       "ptr": "$ab7e"
     },
     {
-      "file": "level-046.png",
+      "file": "level-045.png",
       "ptr": "$ac23"
     },
     {
-      "file": "level-047.png",
+      "file": "level-046.png",
       "ptr": "$ada5"
     },
     {
-      "file": "level-048.png",
+      "file": "level-047.png",
       "ptr": "$ae8d"
     },
     {
-      "file": "level-049.png",
+      "file": "level-048.png",
       "ptr": "$afbd"
     },
     {
-      "file": "level-050.png",
+      "file": "level-049.png",
       "ptr": "$b15c"
     },
     {
-      "file": "level-051.png",
+      "file": "level-050.png",
       "ptr": "$b247"
     },
     {
-      "file": "level-052.png",
+      "file": "level-051.png",
       "ptr": "$e000"
     },
     {
-      "file": "level-053.png",
+      "file": "level-052.png",
       "ptr": "$e10b"
     },
     {
-      "file": "level-054.png",
+      "file": "level-053.png",
       "ptr": "$e1b7"
     },
     {
-      "file": "level-055.png",
+      "file": "level-054.png",
       "ptr": "$e317"
     },
     {
-      "file": "level-056.png",
+      "file": "level-055.png",
       "ptr": "$e457"
     },
     {
-      "file": "level-057.png",
+      "file": "level-056.png",
       "ptr": "$e595"
     },
     {
-      "file": "level-058.png",
+      "file": "level-057.png",
       "ptr": "$b2eb"
     },
     {
-      "file": "level-059.png",
+      "file": "level-058.png",
       "ptr": "$b388"
     },
     {
-      "file": "level-060.png",
+      "file": "level-059.png",
       "ptr": "$b433"
     },
     {
-      "file": "level-061.png",
+      "file": "level-060.png",
       "ptr": "$b4ff"
     },
     {
-      "file": "level-062.png",
+      "file": "level-061.png",
       "ptr": "$b61e"
     },
     {
-      "file": "level-063.png",
+      "file": "level-062.png",
       "ptr": "$b71c"
     },
     {
-      "file": "level-064.png",
+      "file": "level-063.png",
       "ptr": "$b7bb"
     },
     {
-      "file": "level-065.png",
+      "file": "level-064.png",
       "ptr": "$b890"
     },
     {
-      "file": "level-066.png",
+      "file": "level-065.png",
       "ptr": "$b991"
     },
     {
-      "file": "level-067.png",
+      "file": "level-066.png",
       "ptr": "$ba5e"
     },
     {
-      "file": "level-068.png",
+      "file": "level-067.png",
       "ptr": "$bb4b"
     },
     {
-      "file": "level-069.png",
+      "file": "level-068.png",
       "ptr": "$bbd9"
     },
     {
-      "file": "level-070.png",
+      "file": "level-069.png",
       "ptr": "$bce2"
     },
     {
-      "file": "level-071.png",
+      "file": "level-070.png",
       "ptr": "$bdc7"
     },
     {
-      "file": "level-072.png",
+      "file": "level-071.png",
       "ptr": "$be7c"
     },
     {
-      "file": "level-073.png",
+      "file": "level-072.png",
       "ptr": "$c000"
     },
     {
-      "file": "level-074.png",
+      "file": "level-073.png",
       "ptr": "$e686"
     },
     {
-      "file": "level-075.png",
+      "file": "level-074.png",
       "ptr": "$e770"
     },
     {
-      "file": "level-076.png",
+      "file": "level-075.png",
       "ptr": "$e8bb"
     },
     {
-      "file": "level-077.png",
+      "file": "level-076.png",
       "ptr": "$ea07"
     },
     {
-      "file": "level-078.png",
+      "file": "level-077.png",
       "ptr": "$eb0a"
     },
     {
-      "file": "level-079.png",
+      "file": "level-078.png",
       "ptr": "$c107"
     },
     {
-      "file": "level-080.png",
+      "file": "level-079.png",
       "ptr": "$c1e7"
     },
     {
-      "file": "level-081.png",
+      "file": "level-080.png",
       "ptr": "$c2a2"
     },
     {
-      "file": "level-082.png",
+      "file": "level-081.png",
       "ptr": "$c381"
     },
     {
-      "file": "level-083.png",
+      "file": "level-082.png",
       "ptr": "$c4b8"
     },
     {
-      "file": "level-084.png",
+      "file": "level-083.png",
       "ptr": "$c58d"
     },
     {
-      "file": "level-085.png",
+      "file": "level-084.png",
       "ptr": "$c66c"
     },
     {
-      "file": "level-086.png",
+      "file": "level-085.png",
       "ptr": "$c741"
+    },
+    {
+      "file": "level-086.png",
+      "ptr": "$c842"
+    },
+    {
+      "file": "level-087.png",
+      "ptr": "$c8fd"
+    },
+    {
+      "file": "level-088.png",
+      "ptr": "$c97c"
+    },
+    {
+      "file": "level-089.png",
+      "ptr": "$ca4d"
+    },
+    {
+      "file": "level-090.png",
+      "ptr": "$cb00"
+    },
+    {
+      "file": "level-091.png",
+      "ptr": "$cb82"
+    },
+    {
+      "file": "level-092.png",
+      "ptr": "$cc17"
+    },
+    {
+      "file": "level-093.png",
+      "ptr": "$cd19"
+    },
+    {
+      "file": "level-094.png",
+      "ptr": "$ecb8"
+    },
+    {
+      "file": "level-095.png",
+      "ptr": "$edc8"
+    },
+    {
+      "file": "level-096.png",
+      "ptr": "$eeb9"
+    },
+    {
+      "file": "level-097.png",
+      "ptr": "$efae"
+    },
+    {
+      "file": "level-098.png",
+      "ptr": "$f069"
+    },
+    {
+      "file": "level-099.png",
+      "ptr": "$f228"
+    },
+    {
+      "file": "level-100.png",
+      "ptr": "$ce30"
+    },
+    {
+      "file": "level-101.png",
+      "ptr": "$cee6"
+    },
+    {
+      "file": "level-102.png",
+      "ptr": "$cf8d"
+    },
+    {
+      "file": "level-103.png",
+      "ptr": "$d054"
+    },
+    {
+      "file": "level-104.png",
+      "ptr": "$d110"
+    },
+    {
+      "file": "level-105.png",
+      "ptr": "$d202"
+    },
+    {
+      "file": "level-106.png",
+      "ptr": "$d2ff"
+    },
+    {
+      "file": "level-107.png",
+      "ptr": "$d3be"
+    },
+    {
+      "file": "level-108.png",
+      "ptr": "$d509"
+    },
+    {
+      "file": "level-109.png",
+      "ptr": "$d5a1"
+    },
+    {
+      "file": "level-110.png",
+      "ptr": "$d635"
+    },
+    {
+      "file": "level-111.png",
+      "ptr": "$d703"
+    },
+    {
+      "file": "level-112.png",
+      "ptr": "$d7c6"
+    },
+    {
+      "file": "level-113.png",
+      "ptr": "$d865"
+    },
+    {
+      "file": "level-114.png",
+      "ptr": "$d90a"
+    },
+    {
+      "file": "level-115.png",
+      "ptr": "$f2f5"
+    },
+    {
+      "file": "level-116.png",
+      "ptr": "$f354"
+    },
+    {
+      "file": "level-117.png",
+      "ptr": "$f3da"
+    },
+    {
+      "file": "level-118.png",
+      "ptr": "$f476"
+    },
+    {
+      "file": "level-119.png",
+      "ptr": "$f501"
+    },
+    {
+      "file": "level-120.png",
+      "ptr": "$f651"
+    },
+    {
+      "file": "level-121.png",
+      "ptr": "$f6e3"
+    },
+    {
+      "file": "level-122.png",
+      "ptr": "$f810"
+    },
+    {
+      "file": "level-123.png",
+      "ptr": "$f93d"
+    },
+    {
+      "file": "level-124.png",
+      "ptr": "$fa1f"
+    },
+    {
+      "file": "level-125.png",
+      "ptr": "$fb1d"
+    },
+    {
+      "file": "level-126.png",
+      "ptr": "$fbd5"
+    },
+    {
+      "file": "level-127.png",
+      "ptr": "$fcba"
     }
   ]
 }

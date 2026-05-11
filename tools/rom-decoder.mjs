@@ -369,18 +369,24 @@ function decodeLevels(cpu) {
   const levels   = [];
   const seen     = new Set();
   const ptrs     = [];
-  const total    = 171; // confirmed entry count
+  const total    = 165;  // entries before the sentinel/garbage tail
 
+  // The pointer table is 32-bit big-endian addresses, not 16-bit. Each entry
+  // is $0003xxxx where the low 16 bits is the slapstic offset and the high
+  // 16 bits is the bank-ID $0003. Reading as 16-bit words sees every other
+  // entry as $0003 (garbage) and the real pointers as the alternating slots.
   for (let i = 0; i < total; i++) {
-    const addr = POINTER_TABLE_ADDR + i * 2;
-    const ptr  = readWord(cpu, addr);
+    const addr = POINTER_TABLE_ADDR + i * 4;
+    const hi   = readWord(cpu, addr);
+    const lo   = readWord(cpu, addr + 2);
 
     // Sentinel / invalid pointers
-    if (ptr === 0xFFFF || ptr > 0xFDA3) continue;
+    if (hi !== 0x0003) continue;
+    if (lo === 0xFFFF || lo === 0x0000 || lo > 0xFDA3) continue;
     // Deduplicate (same layout appears in multiple difficulty tiers)
-    if (seen.has(ptr)) continue;
-    seen.add(ptr);
-    ptrs.push(ptr);
+    if (seen.has(lo)) continue;
+    seen.add(lo);
+    ptrs.push(lo);
   }
 
   console.log(`Found ${ptrs.length} unique level layouts (expected 125)`);
