@@ -5,3 +5,4 @@ node_modules/
 cfg/
 nvram/
 snap/
+gauntlet-snapshot.*
